@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <cstddef>
 #include <new>
 
 #include "types.h"
@@ -21,7 +22,7 @@ static_assert(sizeof(Gedx8ObjectRegistry<void>) == 0x10, "Gedx8ObjectRegistry mu
 
 struct Gedx8PerformanceOwner
 {
-	u32 reserved00;       // +00
+	s32 masterVolume00;    // +00, cached GUID_PerfMasterVolume value
 	IUnknown* interface04; // +04
 };
 
@@ -85,11 +86,20 @@ struct Gedx8LoadedObject
 	u8 active;         // +00
 	u8 reserved01[3];
 	s32 kind;          // +04
-	void* unknown08;   // +08
+	s32 sourceMode;    // +08: 0/1/2 from FUN_10003890
 	void* payload;     // +0C
 };
 
 static_assert(sizeof(Gedx8LoadedObject) == 0x10, "Gedx8LoadedObject must be 16 bytes");
+static_assert(offsetof(Gedx8LoadedObject, kind) == 0x04, "Gedx8LoadedObject::kind offset mismatch");
+static_assert(offsetof(Gedx8LoadedObject, sourceMode) == 0x08, "Gedx8LoadedObject::sourceMode offset mismatch");
+static_assert(offsetof(Gedx8LoadedObject, payload) == 0x0C, "Gedx8LoadedObject::payload offset mismatch");
+
+
+struct Gedx8SegmentPayload
+{
+	IUnknown* segment;
+};
 
 
 struct Gedx8Audiopath
@@ -147,6 +157,132 @@ static const GUID IID_1000C278 =
 	0x11D1,
 	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
 };
+
+static const GUID CLSID_DirectMusicLoader_1000C398 =
+{
+	0xD2AC2892,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID IID_IDirectMusicLoader8_1000C258 =
+{
+	0x19E7C08C,
+	0x0A44,
+	0x4E6A,
+	{ 0xA1, 0x16, 0x59, 0x5A, 0x7C, 0xD5, 0xDE, 0x8C }
+};
+
+static const GUID GUID_DirectMusicAllTypes_1000C324 =
+{
+	0xD2AC2893,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID CLSID_DirectMusicSegment_1000C218 =
+{
+	0xD2AC2882,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID IID_IDirectMusicSegment8_1000C238 =
+{
+	0xC6784488,
+	0x41A3,
+	0x418F,
+	{ 0xAA, 0x15, 0xB3, 0x50, 0x93, 0xBA, 0x42, 0xD4 }
+};
+
+// DirectMusic performance parameters used by original FUN_10003D00,
+// FUN_10003E20 and FUN_10003E50.
+static const GUID GUID_PerfMasterTempo_1000C2B8 =
+{
+	0xD2AC28B0,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID GUID_PerfMasterGrooveLevel_1000C2C8 =
+{
+	0xD2AC28B2,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID GUID_PerfMasterVolume_1000C2D8 =
+{
+	0xD2AC28B1,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID GUID_PerfAutoDownload_1000C2E8 =
+{
+	0xFB09565B,
+	0x3631,
+	0x11D2,
+	{ 0xBC, 0xB8, 0x00, 0xA0, 0xC9, 0x22, 0xE6, 0xEB }
+};
+
+
+struct Gedx8AudioParams
+{
+	u32 size;
+	BOOL initializeNow;
+	u32 validData;
+	u32 features;
+	u32 voices;
+	u32 sampleRate;
+	GUID defaultSynth;
+};
+
+static_assert(sizeof(Gedx8AudioParams) == 0x28, "Gedx8AudioParams must be 40 bytes");
+
+
+struct Gedx8ObjectDesc
+{
+	u32 size;
+	u32 validData;
+	GUID objectId;
+	GUID classId;
+	FILETIME date;
+	u32 versionMS;
+	u32 versionLS;
+	WCHAR name[64];
+	WCHAR category[64];
+	WCHAR fileName[MAX_PATH];
+	LONGLONG memoryLength;
+	void* memoryData;
+	void* stream;
+};
+
+static_assert(sizeof(Gedx8ObjectDesc) == 0x350, "Gedx8ObjectDesc must be 848 bytes");
+static_assert(offsetof(Gedx8ObjectDesc, classId) == 0x18, "Gedx8ObjectDesc::classId offset mismatch");
+static_assert(offsetof(Gedx8ObjectDesc, fileName) == 0x138, "Gedx8ObjectDesc::fileName offset mismatch");
+
+
+template<typename T>
+static T GetComMethod(IUnknown* interfaceValue, u32 byteOffset)
+{
+	void** const vtable = *reinterpret_cast<void***>(interfaceValue);
+	return reinterpret_cast<T>(vtable[byteOffset / sizeof(void*)]);
+}
+
+
+using PerformanceGetGlobalParamFn = HRESULT(__stdcall*)(IUnknown* performance, const GUID& parameterType, void* value, u32 valueSize);
+using PerformanceSetGlobalParamFn = HRESULT(__stdcall*)(IUnknown* performance, const GUID& parameterType, void* value, u32 valueSize);
+using PerformanceCloseDownFn = HRESULT(__stdcall*)(IUnknown* performance);
+using PerformanceInitAudioFn = HRESULT(__stdcall*)(IUnknown* performance, void** directMusicOut, void** directSoundOut, HWND windowHandle, u32 defaultPathType, u32 pchannelCount, u32 flags, Gedx8AudioParams* parameters);
+using LoaderGetObjectFn = HRESULT(__stdcall*)(IUnknown* loader, Gedx8ObjectDesc* descriptor, const GUID& interfaceId, void** objectOut);
+using LoaderSetSearchDirectoryFn = HRESULT(__stdcall*)(IUnknown* loader, const GUID& objectType, const WCHAR* path, BOOL clear);
 
 template<typename T>
 static Gedx8ObjectRegistry<T>* CreateObjectRegistry()
@@ -291,6 +427,35 @@ static bool GrowInstanceRegistry(Gedx8InstanceRegistry* registry)
 	return true;
 }
 
+
+template<typename T>
+static bool GrowObjectRegistry(Gedx8ObjectRegistry<T>* registry)
+{
+	if (registry == nullptr || registry->usedCount > registry->capacity)
+		return false;
+
+	if (registry->usedCount != 0 && registry->entries == nullptr)
+		return false;
+
+	const u32 newCapacity = CalculateNextCapacity(registry->capacity);
+
+	if (newCapacity <= registry->capacity)
+		return false;
+
+	T** const newEntries = new (std::nothrow) T * [newCapacity] {};
+
+	if (newEntries == nullptr)
+		return false;
+
+	for (u32 index = 0; index < registry->usedCount; ++index)
+		newEntries[index] = registry->entries[index];
+
+	delete[] registry->entries;
+	registry->entries = newEntries;
+	registry->capacity = newCapacity;
+	return true;
+}
+
 // -----------------------------------------------------------------------------
 // Destructor for driver instances
 // Original: 100010D0
@@ -396,21 +561,9 @@ static void DestroyLoadedObject(Gedx8LoadedObject* object)
 		{
 		case 0:
 		{
-			// Original: FUN_10004170.
-			//
-			// Der Kind-0-Payload besitzt bei +10 einen zusätzlich
-			// angelegten Speicherblock.
-			auto* payloadBytes = static_cast<u8*>(object->payload);
-
-			void*& allocation10 = *reinterpret_cast<void**>(payloadBytes + 0x10);
-
-			if (allocation10 != nullptr)
-			{
-				::operator delete(allocation10);
-				allocation10 = nullptr;
-			}
-
-			::operator delete(object->payload);
+			auto* payload = static_cast<Gedx8SegmentPayload*>(object->payload);
+			ReleaseInterface(payload->segment);
+			delete payload;
 			object->payload = nullptr;
 			break;
 		}
@@ -712,30 +865,120 @@ static u8 __cdecl Method10001630(Gedx8DriverInstance* instance)
 // +10
 // -----------------------------------------------------------------------------
 
-static u8 __stdcall Method10001920(Gedx8DriverInstance* instance, const Gedx8SynthInitConfig* config)
+static u8 InitializePerformance(Gedx8PerformanceOwner* owner, const Gedx8SynthInitConfig* config)
 {
-	if (instance == nullptr)
+	Gedx8AudioParams parameters{};
+	parameters.size = sizeof(parameters);
+	parameters.initializeNow = TRUE;
+	parameters.validData = 0x07;
+	parameters.features = 0x3F;
+	parameters.voices = config->voiceCount;
+	parameters.sampleRate = config->sampleRate;
+
+	IUnknown* const performance = owner->interface04;
+
+	if (performance == nullptr)
 		return 0;
 
-	return 0;
+	const auto initAudio = GetComMethod<PerformanceInitAudioFn>(performance, 0xB0);
+
+	const HRESULT initResult = initAudio(
+		performance,
+		nullptr,
+		nullptr,
+		reinterpret_cast<HWND>(config->windowHandle),
+		0,
+		0,
+		0x3F,
+		&parameters);
+
+	if (FAILED(initResult))
+		return 0;
+
+	const auto setGlobalParam = GetComMethod<PerformanceSetGlobalParamFn>(performance, 0x88);
+
+	float masterTempo = 1.0f;
+	s8 masterGrooveLevel = 0;
+	s32 autoDownload = 1;
+	owner->masterVolume00 = 0;
+
+	// Das Original ignoriert die HRESULT-Werte dieser vier Initialisierungen.
+	static_cast<void>(setGlobalParam(performance, GUID_PerfMasterTempo_1000C2B8, &masterTempo, sizeof(masterTempo)));
+	static_cast<void>(setGlobalParam(performance, GUID_PerfMasterGrooveLevel_1000C2C8, &masterGrooveLevel, sizeof(masterGrooveLevel)));
+	static_cast<void>(setGlobalParam(performance, GUID_PerfAutoDownload_1000C2E8, &autoDownload, sizeof(autoDownload)));
+	static_cast<void>(setGlobalParam(performance, GUID_PerfMasterVolume_1000C2D8, &owner->masterVolume00, sizeof(owner->masterVolume00)));
+
+	return 1;
+}
+
+
+static u8 ClosePerformance(Gedx8PerformanceOwner* owner)
+{
+	IUnknown* const performance = owner->interface04;
+
+	if (performance == nullptr)
+		return 0;
+
+	const auto closeDown = GetComMethod<PerformanceCloseDownFn>(performance, 0x98);
+	return SUCCEEDED(closeDown(performance)) ? 1 : 0;
+}
+
+
+static u8 SetPerformanceMasterVolume(Gedx8PerformanceOwner* owner, s32 value)
+{
+	IUnknown* const performance = owner->interface04;
+
+	if (performance == nullptr)
+		return 0;
+
+	if (value != owner->masterVolume00)
+	{
+		owner->masterVolume00 = value;
+
+		const auto setGlobalParam = GetComMethod<PerformanceSetGlobalParamFn>(performance, 0x88);
+
+		// FUN_10003E20 aktualisiert den Cache vor dem COM-Aufruf und ignoriert
+		// dessen HRESULT. Ein vorhandenes Performance-Interface bedeutet Erfolg.
+		static_cast<void>(setGlobalParam(performance, GUID_PerfMasterVolume_1000C2D8, &value, sizeof(value)));
+	}
+
+	return 1;
+}
+
+
+static u8 GetPerformanceMasterVolume(Gedx8PerformanceOwner* owner, s32* valueOut)
+{
+	IUnknown* const performance = owner->interface04;
+
+	if (performance == nullptr)
+		return 0;
+
+	const auto getGlobalParam = GetComMethod<PerformanceGetGlobalParamFn>(performance, 0x84);
+	return SUCCEEDED(getGlobalParam(performance, GUID_PerfMasterVolume_1000C2D8, valueOut, sizeof(*valueOut))) ? 1 : 0;
+}
+
+
+static u8 __stdcall Method10001920(Gedx8DriverInstance* instance, const Gedx8SynthInitConfig* config)
+{
+	return InitializePerformance(instance->performance, config);
 }
 
 
 static u8 __stdcall Method10001940(Gedx8DriverInstance* instance)
 {
-	return instance != nullptr;
+	return ClosePerformance(instance->performance);
 }
 
 
 static u8 __stdcall Method10001950(Gedx8DriverInstance* instance, s32 value)
 {
-	return instance != nullptr;
+	return SetPerformanceMasterVolume(instance->performance, value);
 }
 
 
-static u8 __stdcall Method10001970(Gedx8DriverInstance* instance, s32 value)
+static u8 __stdcall Method10001970(Gedx8DriverInstance* instance, s32* valueOut)
 {
-	return instance != nullptr;
+	return GetPerformanceMasterVolume(instance->performance, valueOut);
 }
 
 
@@ -743,18 +986,175 @@ static u8 __stdcall Method10001970(Gedx8DriverInstance* instance, s32 value)
 // Loader
 // -----------------------------------------------------------------------------
 
-static u8 __stdcall Method10001990(Gedx8DriverInstance* instance, s32 kind, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
+static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* basePath)
 {
-	if (objectOut != nullptr)
-		*objectOut = nullptr;
+	Gedx8ControllerState* const state = controller->state00;
+	state->mode08 = 2;
 
-	return 0;
+	if (state->interface10 == nullptr)
+	{
+		static_cast<void>(CoInitialize(nullptr));
+
+		void* loader = nullptr;
+		static_cast<void>(CoCreateInstance(
+			CLSID_DirectMusicLoader_1000C398,
+			nullptr,
+			CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER,
+			IID_IDirectMusicLoader8_1000C258,
+			&loader));
+
+		state->interface10 = static_cast<IUnknown*>(loader);
+	}
+
+	if (state->interface10 == nullptr)
+		return false;
+
+	state->selected14 = state->interface10;
+
+	WCHAR widePath[MAX_PATH]{};
+	static_cast<void>(MultiByteToWideChar(CP_ACP, 0, basePath, -1, widePath, MAX_PATH));
+
+	const auto setSearchDirectory = GetComMethod<LoaderSetSearchDirectoryFn>(state->interface10, 0x14);
+	return SUCCEEDED(setSearchDirectory(state->interface10, GUID_DirectMusicAllTypes_1000C324, widePath, FALSE));
+}
+
+
+static bool LoadObservedSegment(
+	Gedx8ControllerOwner* controller,
+	s32 loadMode,
+	const Gedx8LoadDescriptor* descriptor,
+	Gedx8LoadedObject** objectOut,
+	const char* basePath)
+{
+	// Belegter Spielpfad aus 10003890:
+	// loadMode != 1, basePath != nullptr -> Loader-Modus 2.
+	if (loadMode == 1 || basePath == nullptr || descriptor->objectKind != 0)
+		return false;
+
+	if (!SelectExternalLoader(controller, basePath))
+		return false;
+
+	Gedx8ObjectDesc objectDescriptor{};
+	objectDescriptor.size = sizeof(objectDescriptor);
+	objectDescriptor.validData = 0x12; // DMUS_OBJ_CLASS | DMUS_OBJ_FILENAME
+	objectDescriptor.classId = CLSID_DirectMusicSegment_1000C218;
+
+	static_cast<void>(MultiByteToWideChar(
+		CP_ACP,
+		0,
+		descriptor->fileName,
+		-1,
+		objectDescriptor.fileName,
+		MAX_PATH));
+
+	IUnknown* const loader = controller->state00->interface10;
+	const auto getObject = GetComMethod<LoaderGetObjectFn>(loader, 0x0C);
+
+	void* segmentValue = nullptr;
+	const HRESULT loadResult = getObject(
+		loader,
+		&objectDescriptor,
+		IID_IDirectMusicSegment8_1000C238,
+		&segmentValue);
+
+	if (FAILED(loadResult) || segmentValue == nullptr)
+		return false;
+
+	auto* payload = new (std::nothrow) Gedx8SegmentPayload{};
+
+	if (payload == nullptr)
+	{
+		static_cast<IUnknown*>(segmentValue)->Release();
+		return false;
+	}
+
+	payload->segment = static_cast<IUnknown*>(segmentValue);
+
+	auto* loadedObject = new (std::nothrow) Gedx8LoadedObject{};
+
+	if (loadedObject == nullptr)
+	{
+		ReleaseInterface(payload->segment);
+		delete payload;
+		return false;
+	}
+
+	loadedObject->kind = 0;
+	loadedObject->sourceMode = 2;
+	loadedObject->payload = payload;
+	*objectOut = loadedObject;
+	return true;
+}
+
+
+static bool RegisterLoadedObject(Gedx8ObjectRegistry<Gedx8LoadedObject>* registry, Gedx8LoadedObject* object)
+{
+	u32 insertionIndex = registry->usedCount;
+
+	for (u32 index = 0; index < registry->usedCount; ++index)
+	{
+		Gedx8LoadedObject* const existing = registry->entries[index];
+
+		if (existing == nullptr || existing->active == 0)
+		{
+			insertionIndex = index;
+			break;
+		}
+	}
+
+	if (insertionIndex == registry->usedCount)
+	{
+		if (registry->usedCount == registry->capacity && !GrowObjectRegistry(registry))
+			return false;
+
+		++registry->usedCount;
+	}
+
+	object->active = 1;
+	registry->entries[insertionIndex] = object;
+	++registry->activeCount;
+
+	if (registry->usedCount <= insertionIndex)
+		registry->usedCount = insertionIndex + 1;
+
+	return true;
+}
+
+
+static u8 __stdcall Method10001990(Gedx8DriverInstance* instance, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
+{
+	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr ||
+		descriptor == nullptr || objectOut == nullptr)
+	{
+		return 0;
+	}
+
+	if (!LoadObservedSegment(instance->controller, loadMode, descriptor, objectOut, basePath))
+		return 0;
+
+	Gedx8LoadedObject* const loadedObject = *objectOut;
+
+	if (!RegisterLoadedObject(instance->objects, loadedObject))
+	{
+		DestroyLoadedObject(loadedObject);
+		*objectOut = nullptr;
+		return 0;
+	}
+
+	return 1;
 }
 
 
 static u8 __stdcall Method10001AB0(Gedx8DriverInstance* instance, s32 value0, s32 value1)
 {
-	return 0;
+	if (instance == nullptr || instance->controller == nullptr || value0 == 0 || value1 == 0)
+		return 0;
+
+	// FUN_10003BC0: Diese beiden Werte aktivieren später den internen
+	// Ladepfad (loadMode == 1) von FUN_10003890.
+	instance->controller->reserved04 = static_cast<u32>(value0);
+	instance->controller->reserved08 = static_cast<u32>(value1);
+	return 1;
 }
 
 

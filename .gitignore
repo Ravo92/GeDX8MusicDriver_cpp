@@ -70,4 +70,3 @@ debug/
 .cache/
 .vs/
 *.user
-*.filters

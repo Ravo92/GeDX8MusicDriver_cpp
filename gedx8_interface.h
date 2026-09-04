@@ -6,7 +6,6 @@
 struct Gedx8DriverInstance;
 struct Gedx8LoadedObject;
 struct Gedx8Audiopath;
-struct Gedx8LoadDescriptor;
 
 // -----------------------------------------------------------------------------
 // Method pointer types
@@ -28,9 +27,9 @@ using Slot14Fn = u8(__stdcall*)(Gedx8DriverInstance* instance);
 
 using Slot18Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 value);
 
-using Slot1CFn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 value);
+using Slot1CFn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32* valueOut);
 
-using Slot20Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 kind, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** loadedObjectOut, const char* basePath);
+using Slot20Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** loadedObjectOut, const char* basePath);
 
 using Slot24Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 value0, s32 value1);
 
