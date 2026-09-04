@@ -1,0 +1,4 @@
+LIBRARY gedx8musicdrv
+
+EXPORTS
+    GetInterface2 @1
