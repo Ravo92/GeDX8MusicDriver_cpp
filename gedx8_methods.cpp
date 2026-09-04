@@ -98,19 +98,39 @@ static_assert(offsetof(Gedx8LoadedObject, payload) == 0x0C, "Gedx8LoadedObject::
 
 struct Gedx8SegmentPayload
 {
-	IUnknown* segment;
+	u32 reserved00;       // +00
+	IUnknown* segment04;  // +04: IDirectMusicSegment8
+	void* context08;      // +08: original composite context
+	IUnknown* segment0C;  // +0C: borrowed alias of segment04
+	void* resolved10;     // +10: populated by original FUN_10004670
+	s32 length14;         // +14: segment length
+	u16 state18;          // +18
+	u8 state1A;           // +1A
+	u8 resolved1B;        // +1B
 };
+
+static_assert(sizeof(Gedx8SegmentPayload) == 0x1C, "Gedx8SegmentPayload must be 28 bytes");
+static_assert(offsetof(Gedx8SegmentPayload, segment04) == 0x04, "Gedx8SegmentPayload::segment04 offset mismatch");
 
 
 struct Gedx8Audiopath
 {
 	u8 active;                       // +000
-	u8 reserved001[0x1BF];           // +001
-	IUnknown* interface1C0;          // +1C0
-	u32 unknown1C4;                  // +1C4
+	u8 state001;                     // +001
+	u8 reserved002[0x1AE];           // +002
+	s32 pathType1B0;                 // +1B0
+	u32 pchannelCount1B4;            // +1B4
+	u8 activated1B8;                 // +1B8
+	u8 reserved1B9[0x07];            // +1B9
+	IUnknown* interface1C0;          // +1C0: IDirectMusicAudioPath8
+	IUnknown* performance1C4;        // +1C4: borrowed
 };
 
 static_assert(sizeof(Gedx8Audiopath) == 0x1C8, "Gedx8Audiopath must be 456 bytes");
+static_assert(offsetof(Gedx8Audiopath, pathType1B0) == 0x1B0, "Gedx8Audiopath::pathType1B0 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, activated1B8) == 0x1B8, "Gedx8Audiopath::activated1B8 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, interface1C0) == 0x1C0, "Gedx8Audiopath::interface1C0 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, performance1C4) == 0x1C4, "Gedx8Audiopath::performance1C4 offset mismatch");
 
 
 struct Gedx8InstanceRegistry
@@ -283,6 +303,10 @@ using PerformanceCloseDownFn = HRESULT(__stdcall*)(IUnknown* performance);
 using PerformanceInitAudioFn = HRESULT(__stdcall*)(IUnknown* performance, void** directMusicOut, void** directSoundOut, HWND windowHandle, u32 defaultPathType, u32 pchannelCount, u32 flags, Gedx8AudioParams* parameters);
 using LoaderGetObjectFn = HRESULT(__stdcall*)(IUnknown* loader, Gedx8ObjectDesc* descriptor, const GUID& interfaceId, void** objectOut);
 using LoaderSetSearchDirectoryFn = HRESULT(__stdcall*)(IUnknown* loader, const GUID& objectType, const WCHAR* path, BOOL clear);
+using SegmentGetLengthFn = HRESULT(__stdcall*)(IUnknown* segment, s32* lengthOut);
+using SegmentGetAudioPathConfigFn = HRESULT(__stdcall*)(IUnknown* segment, IUnknown** configOut);
+using PerformanceCreateAudioPathFn = HRESULT(__stdcall*)(IUnknown* performance, IUnknown* sourceConfig, BOOL activate, IUnknown** audiopathOut);
+using PerformanceCreateStandardAudioPathFn = HRESULT(__stdcall*)(IUnknown* performance, u32 type, u32 pchannelCount, BOOL activate, IUnknown** audiopathOut);
 
 template<typename T>
 static Gedx8ObjectRegistry<T>* CreateObjectRegistry()
@@ -562,7 +586,8 @@ static void DestroyLoadedObject(Gedx8LoadedObject* object)
 		case 0:
 		{
 			auto* payload = static_cast<Gedx8SegmentPayload*>(object->payload);
-			ReleaseInterface(payload->segment);
+			ReleaseInterface(payload->segment04);
+			payload->segment0C = nullptr;
 			delete payload;
 			object->payload = nullptr;
 			break;
@@ -751,7 +776,6 @@ static Gedx8DriverInstance* __stdcall Method100013F0()
 		return nullptr;
 
 	instance->audiopaths = CreateObjectRegistry<Gedx8Audiopath>();
-
 	instance->objects = CreateObjectRegistry<Gedx8LoadedObject>();
 
 	if (instance->audiopaths == nullptr || instance->objects == nullptr)
@@ -882,15 +906,7 @@ static u8 InitializePerformance(Gedx8PerformanceOwner* owner, const Gedx8SynthIn
 
 	const auto initAudio = GetComMethod<PerformanceInitAudioFn>(performance, 0xB0);
 
-	const HRESULT initResult = initAudio(
-		performance,
-		nullptr,
-		nullptr,
-		reinterpret_cast<HWND>(config->windowHandle),
-		0,
-		0,
-		0x3F,
-		&parameters);
+	const HRESULT initResult = initAudio(performance, nullptr, nullptr, reinterpret_cast<HWND>(config->windowHandle), 0, 0, 0x3F, &parameters);
 
 	if (FAILED(initResult))
 		return 0;
@@ -996,12 +1012,7 @@ static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* b
 		static_cast<void>(CoInitialize(nullptr));
 
 		void* loader = nullptr;
-		static_cast<void>(CoCreateInstance(
-			CLSID_DirectMusicLoader_1000C398,
-			nullptr,
-			CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER,
-			IID_IDirectMusicLoader8_1000C258,
-			&loader));
+		static_cast<void>(CoCreateInstance(CLSID_DirectMusicLoader_1000C398, nullptr, CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER, IID_IDirectMusicLoader8_1000C258, &loader));
 
 		state->interface10 = static_cast<IUnknown*>(loader);
 	}
@@ -1019,12 +1030,7 @@ static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* b
 }
 
 
-static bool LoadObservedSegment(
-	Gedx8ControllerOwner* controller,
-	s32 loadMode,
-	const Gedx8LoadDescriptor* descriptor,
-	Gedx8LoadedObject** objectOut,
-	const char* basePath)
+static bool LoadObservedSegment(Gedx8ControllerOwner* controller, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
 {
 	// Belegter Spielpfad aus 10003890:
 	// loadMode != 1, basePath != nullptr -> Loader-Modus 2.
@@ -1068,13 +1074,17 @@ static bool LoadObservedSegment(
 		return false;
 	}
 
-	payload->segment = static_cast<IUnknown*>(segmentValue);
+	payload->segment04 = static_cast<IUnknown*>(segmentValue);
+	payload->segment0C = payload->segment04;
+
+	const auto getLength = GetComMethod<SegmentGetLengthFn>(payload->segment04, 0x0C);
+	static_cast<void>(getLength(payload->segment04, &payload->length14));
 
 	auto* loadedObject = new (std::nothrow) Gedx8LoadedObject{};
 
 	if (loadedObject == nullptr)
 	{
-		ReleaseInterface(payload->segment);
+		ReleaseInterface(payload->segment04);
 		delete payload;
 		return false;
 	}
@@ -1123,8 +1133,7 @@ static bool RegisterLoadedObject(Gedx8ObjectRegistry<Gedx8LoadedObject>* registr
 
 static u8 __stdcall Method10001990(Gedx8DriverInstance* instance, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
 {
-	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr ||
-		descriptor == nullptr || objectOut == nullptr)
+	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr || descriptor == nullptr || objectOut == nullptr)
 	{
 		return 0;
 	}
@@ -1180,12 +1189,138 @@ static u8 __stdcall Method10001B60(Gedx8DriverInstance* instance)
 // Audiopath
 // -----------------------------------------------------------------------------
 
-static u8 __stdcall Method10001B70(Gedx8DriverInstance* instance, void* config, Gedx8Audiopath** audiopathOut, Gedx8LoadedObject* object)
+static u32 MapStandardAudiopathType(s32 type)
 {
-	if (audiopathOut != nullptr)
-		*audiopathOut = nullptr;
+	switch (type)
+	{
+	case 0: return 6;
+	case 1: return 7;
+	case 2: return 8;
+	case 3: return 1;
+	default: return 0;
+	}
+}
 
-	return 0;
+
+static Gedx8Audiopath* CreateAudiopath(Gedx8PerformanceOwner* performanceOwner, const Gedx8AudiopathConfig* config, Gedx8SegmentPayload* segmentPayload)
+{
+	if (performanceOwner == nullptr || performanceOwner->interface04 == nullptr)
+		return nullptr;
+
+	auto* audiopath = new (std::nothrow) Gedx8Audiopath{};
+
+	if (audiopath == nullptr)
+		return nullptr;
+
+	IUnknown* const performance = performanceOwner->interface04;
+	audiopath->performance1C4 = performance;
+
+	HRESULT result = E_FAIL;
+
+	if (segmentPayload == nullptr)
+	{
+		if (config != nullptr)
+		{
+			audiopath->pathType1B0 = config->type;
+			audiopath->pchannelCount1B4 = config->pchannelCount;
+
+			const u32 standardType = MapStandardAudiopathType(config->type);
+			const auto createStandard = GetComMethod<PerformanceCreateStandardAudioPathFn>(performance, 0xC4);
+			result = createStandard(performance, standardType, config->pchannelCount, FALSE, &audiopath->interface1C0);
+		}
+	}
+	else if (segmentPayload->segment04 != nullptr)
+	{
+		IUnknown* sourceConfig = nullptr;
+		const auto getAudioPathConfig = GetComMethod<SegmentGetAudioPathConfigFn>(segmentPayload->segment04, 0x6C);
+		result = getAudioPathConfig(segmentPayload->segment04, &sourceConfig);
+
+		if (SUCCEEDED(result))
+		{
+			const auto createAudiopath = GetComMethod<PerformanceCreateAudioPathFn>(performance, 0xC0);
+			result = createAudiopath(performance, sourceConfig, FALSE, &audiopath->interface1C0);
+		}
+
+		// Das Original gibt den von GetAudioPathConfig gelieferten Zeiger in
+		// FUN_10002380 nicht frei. Dieses Verhalten wird hier beibehalten.
+	}
+
+	if (FAILED(result) || audiopath->interface1C0 == nullptr)
+	{
+		DestroyAudiopath(audiopath);
+		return nullptr;
+	}
+
+	return audiopath;
+}
+
+
+static bool RegisterAudiopath(Gedx8ObjectRegistry<Gedx8Audiopath>* registry, Gedx8Audiopath* audiopath)
+{
+	u32 insertionIndex = registry->usedCount;
+
+	for (u32 index = 0; index < registry->usedCount; ++index)
+	{
+		Gedx8Audiopath* const existing = registry->entries[index];
+
+		if (existing == nullptr || existing->active == 0)
+		{
+			insertionIndex = index;
+			break;
+		}
+	}
+
+	if (insertionIndex == registry->usedCount)
+	{
+		if (registry->usedCount == registry->capacity && !GrowObjectRegistry(registry))
+			return false;
+
+		++registry->usedCount;
+	}
+
+	audiopath->active = 1;
+	registry->entries[insertionIndex] = audiopath;
+	++registry->activeCount;
+
+	if (registry->usedCount <= insertionIndex)
+		registry->usedCount = insertionIndex + 1;
+
+	return true;
+}
+
+
+static u8 __stdcall Method10001B70(Gedx8DriverInstance* instance, const Gedx8AudiopathConfig* config, Gedx8Audiopath** audiopathOut, Gedx8LoadedObject* object)
+{
+	if (instance == nullptr || instance->performance == nullptr || instance->audiopaths == nullptr || audiopathOut == nullptr)
+		return 0;
+
+	Gedx8SegmentPayload* segmentPayload = nullptr;
+
+	if (object != nullptr)
+	{
+		if (object->kind != 0)
+			return 0;
+
+		segmentPayload = static_cast<Gedx8SegmentPayload*>(object->payload);
+	}
+
+	Gedx8Audiopath* const audiopath = CreateAudiopath(instance->performance, config, segmentPayload);
+
+	if (audiopath == nullptr)
+	{
+		*audiopathOut = nullptr;
+		return 0;
+	}
+
+	if (!RegisterAudiopath(instance->audiopaths, audiopath))
+	{
+		DestroyAudiopath(audiopath);
+		*audiopathOut = nullptr;
+		return 0;
+	}
+
+	*audiopathOut = audiopath;
+	return 1;
 }
 
 

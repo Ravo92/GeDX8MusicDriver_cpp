@@ -39,7 +39,15 @@ using Slot2CFn = u8(__stdcall*)(Gedx8DriverInstance* instance);
 
 using Slot30Fn = u8(__stdcall*)(Gedx8DriverInstance* instance);
 
-using Slot34Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, void* config, Gedx8Audiopath** audiopathOut, Gedx8LoadedObject* loadedObject);
+struct Gedx8AudiopathConfig
+{
+	s32 type;          // +00: observed 3
+	u32 pchannelCount; // +04: observed 0x40
+};
+
+static_assert(sizeof(Gedx8AudiopathConfig) == 0x08, "Gedx8AudiopathConfig must be 8 bytes");
+
+using Slot34Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, const Gedx8AudiopathConfig* config, Gedx8Audiopath** audiopathOut, Gedx8LoadedObject* loadedObject);
 
 using Slot38Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 activeState);
 
