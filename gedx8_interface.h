@@ -53,17 +53,26 @@ using Slot38Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* a
 
 using Slot3CFn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 volume, s32 fadeMilliseconds);
 
-using Slot40Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 selector, s32 value, s32* storedValueOut);
+using Slot40Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 selector, void* parameterData);
 
-using Slot44Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32* selectionOut);
+using Slot44Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32* volumeOut);
 
-using Slot48Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, s32 selector, s32 value, s32* storedValueOut);
+using Slot48Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 selector, void* parameterData);
 
-using Slot4CFn = u8(__stdcall*)(Gedx8DriverInstance* instance, u8 value);
+using Slot4CFn = u8(__stdcall*)(Gedx8DriverInstance* instance, u32 unused0, u32 unused1);
 
 using Slot50Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath);
 
-using Slot54Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, Gedx8LoadedObject* object, s32 flags, s32 startTime, s32 repeatCount, s32 reserved);
+struct Gedx8StartInfo
+{
+	u16 value00;
+	u16 reserved02;
+	u32 value04;
+};
+
+static_assert(sizeof(Gedx8StartInfo) == 0x08, "Gedx8StartInfo must be 8 bytes");
+
+using Slot54Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, Gedx8LoadedObject* object, u32 flags, const Gedx8StartInfo* startInfo, s32 repeatCount, u8 downloadBeforePlay);
 
 using Slot58Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, s32 stopMode);
 
@@ -73,7 +82,7 @@ using Slot60Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8LoadedObject
 
 using Slot64Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, s32 mode, void* structure);
 
-using Slot68Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, u8* value0Out, u8* value1Out);
+using Slot68Fn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, u8* valuesOut);
 
 using Slot6CFn = u8(__stdcall*)(Gedx8DriverInstance* instance, Gedx8LoadedObject* object);
 

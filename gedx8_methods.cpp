@@ -1,4 +1,8 @@
 #include <Windows.h>
+#ifndef DIRECTSOUND_VERSION
+#define DIRECTSOUND_VERSION 0x0800
+#endif
+#include <dsound.h>
 #include <cstddef>
 #include <new>
 
@@ -7,6 +11,7 @@
 #include "gedx8_interface.h"
 
 #pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "Dxguid.lib")
 
 template<typename T>
 struct Gedx8ObjectRegistry
@@ -98,37 +103,125 @@ static_assert(offsetof(Gedx8LoadedObject, payload) == 0x0C, "Gedx8LoadedObject::
 
 struct Gedx8SegmentPayload
 {
-	u32 reserved00;       // +00
-	IUnknown* segment04;  // +04: IDirectMusicSegment8
-	void* context08;      // +08: original composite context
-	IUnknown* segment0C;  // +0C: borrowed alias of segment04
-	void* resolved10;     // +10: populated by original FUN_10004670
-	s32 length14;         // +14: segment length
-	u16 state18;          // +18
-	u8 state1A;           // +1A
-	u8 resolved1B;        // +1B
+	u32 reserved00;                       // +00
+	IUnknown* segment04;                  // +04: IDirectMusicSegment8
+	IUnknown* performance08;              // +08: borrowed
+	Gedx8DirectMusicOwner* directMusic0C; // +0C: borrowed
+	s32* resolved10;                      // +10: MUSIC_TIME table from FUN_10004670
+	s32 length14;                         // +14: segment length
+	u16 state18;                          // +18
+	u8 state1A;                           // +1A
+	u8 resolved1B;                        // +1B
 };
 
 static_assert(sizeof(Gedx8SegmentPayload) == 0x1C, "Gedx8SegmentPayload must be 28 bytes");
 static_assert(offsetof(Gedx8SegmentPayload, segment04) == 0x04, "Gedx8SegmentPayload::segment04 offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, performance08) == 0x08, "Gedx8SegmentPayload::performance08 offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, directMusic0C) == 0x0C, "Gedx8SegmentPayload::directMusic0C offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, resolved10) == 0x10, "Gedx8SegmentPayload::resolved10 offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, length14) == 0x14, "Gedx8SegmentPayload::length14 offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, state18) == 0x18, "Gedx8SegmentPayload::state18 offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, state1A) == 0x1A, "Gedx8SegmentPayload::state1A offset mismatch");
+static_assert(offsetof(Gedx8SegmentPayload, resolved1B) == 0x1B, "Gedx8SegmentPayload::resolved1B offset mismatch");
+
+
+struct Gedx8TimeSignature
+{
+	s32 time00;
+	u8 beatsPerMeasure04;
+	u8 beat05;
+	u16 gridsPerBeat06;
+};
+
+static_assert(sizeof(Gedx8TimeSignature) == 0x08, "DMUS_TIMESIGNATURE layout mismatch");
+
+
+struct Gedx8TempoParam
+{
+	s32 time00;
+	u32 padding04;
+	u32 tempoLow08;
+	u32 tempoHigh0C;
+};
+
+static_assert(sizeof(Gedx8TempoParam) == 0x10, "DMUS_TEMPO_PARAM layout mismatch");
+static_assert(offsetof(Gedx8TempoParam, tempoLow08) == 0x08, "DMUS_TEMPO_PARAM tempo offset mismatch");
+
+
+struct Gedx8SubChord
+{
+	u32 chordPattern00;
+	u32 scalePattern04;
+	u32 inversionPoints08;
+	u32 levels0C;
+	u8 chordRoot10;
+	u8 scaleRoot11;
+	u8 padding12[2];
+};
+
+static_assert(sizeof(Gedx8SubChord) == 0x14, "DMUS_SUBCHORD layout mismatch");
+
+
+struct Gedx8ChordKey
+{
+	WCHAR name00[16];
+	u16 measure20;
+	u8 beat22;
+	u8 subChordCount23;
+	Gedx8SubChord subChords24[8];
+	u32 scaleC4;
+	u8 keyC8;
+	u8 flagsC9;
+	u8 paddingCA[2];
+};
+
+static_assert(sizeof(Gedx8ChordKey) == 0xCC, "DMUS_CHORD_KEY layout mismatch");
+static_assert(offsetof(Gedx8ChordKey, measure20) == 0x20, "DMUS_CHORD_KEY measure offset mismatch");
+static_assert(offsetof(Gedx8ChordKey, beat22) == 0x22, "DMUS_CHORD_KEY beat offset mismatch");
+static_assert(offsetof(Gedx8ChordKey, subChordCount23) == 0x23, "DMUS_CHORD_KEY count offset mismatch");
+static_assert(
+	offsetof(Gedx8ChordKey, subChords24) + offsetof(Gedx8SubChord, chordRoot10) == 0x34,
+	"DMUS_CHORD_KEY root offset mismatch");
+
+
+struct Gedx8ChordControl
+{
+	u8 useCurrentTime00;
+	u8 measure01;
+	u8 beat02;
+	u8 chordRoot03;
+};
+
+static_assert(sizeof(Gedx8ChordControl) == 0x04, "Gedx8ChordControl must be 4 bytes");
 
 
 struct Gedx8Audiopath
 {
-	u8 active;                       // +000
-	u8 state001;                     // +001
-	u8 reserved002[0x1AE];           // +002
+	u8 active;                                  // +000
+	u8 effectCount001;                          // +001
+	u8 reserved002[0x02];                       // +002
+	DSEFFECTDESC effectDescriptors004[9];       // +004
+	u32 effectResults124[9];                    // +124
+	IUnknown* parameterInterfaces148[13];       // +148
+	u8 defaultParameters17C[0x34];              // +17C: original overlapping raw storage
 	s32 pathType1B0;                 // +1B0
 	u32 pchannelCount1B4;            // +1B4
 	u8 activated1B8;                 // +1B8
-	u8 reserved1B9[0x07];            // +1B9
+	u8 reserved1B9[0x03];            // +1B9
+	s32 volume1BC;                   // +1BC
 	IUnknown* interface1C0;          // +1C0: IDirectMusicAudioPath8
 	IUnknown* performance1C4;        // +1C4: borrowed
 };
 
+static_assert(sizeof(DSEFFECTDESC) == 0x20, "DSEFFECTDESC must be 32 bytes on Win32");
 static_assert(sizeof(Gedx8Audiopath) == 0x1C8, "Gedx8Audiopath must be 456 bytes");
+static_assert(offsetof(Gedx8Audiopath, effectDescriptors004) == 0x004, "Gedx8Audiopath::effectDescriptors004 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, effectResults124) == 0x124, "Gedx8Audiopath::effectResults124 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, parameterInterfaces148) == 0x148, "Gedx8Audiopath::parameterInterfaces148 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, defaultParameters17C) == 0x17C, "Gedx8Audiopath::defaultParameters17C offset mismatch");
 static_assert(offsetof(Gedx8Audiopath, pathType1B0) == 0x1B0, "Gedx8Audiopath::pathType1B0 offset mismatch");
 static_assert(offsetof(Gedx8Audiopath, activated1B8) == 0x1B8, "Gedx8Audiopath::activated1B8 offset mismatch");
+static_assert(offsetof(Gedx8Audiopath, volume1BC) == 0x1BC, "Gedx8Audiopath::volume1BC offset mismatch");
 static_assert(offsetof(Gedx8Audiopath, interface1C0) == 0x1C0, "Gedx8Audiopath::interface1C0 offset mismatch");
 static_assert(offsetof(Gedx8Audiopath, performance1C4) == 0x1C4, "Gedx8Audiopath::performance1C4 offset mismatch");
 
@@ -252,6 +345,30 @@ static const GUID GUID_PerfAutoDownload_1000C2E8 =
 	{ 0xBC, 0xB8, 0x00, 0xA0, 0xC9, 0x22, 0xE6, 0xEB }
 };
 
+static const GUID GUID_TempoParam_1000C2F8 =
+{
+	0xD2AC28A5,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID GUID_TimeSignature_1000C308 =
+{
+	0xD2AC28A4,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
+static const GUID GUID_ChordParam_1000C318 =
+{
+	0xD2AC289E,
+	0xB39B,
+	0x11D1,
+	{ 0x87, 0x04, 0x00, 0x60, 0x08, 0x93, 0xB1, 0xBD }
+};
+
 
 struct Gedx8AudioParams
 {
@@ -305,8 +422,54 @@ using LoaderGetObjectFn = HRESULT(__stdcall*)(IUnknown* loader, Gedx8ObjectDesc*
 using LoaderSetSearchDirectoryFn = HRESULT(__stdcall*)(IUnknown* loader, const GUID& objectType, const WCHAR* path, BOOL clear);
 using SegmentGetLengthFn = HRESULT(__stdcall*)(IUnknown* segment, s32* lengthOut);
 using SegmentGetAudioPathConfigFn = HRESULT(__stdcall*)(IUnknown* segment, IUnknown** configOut);
+using SegmentSetRepeatsFn = HRESULT(__stdcall*)(IUnknown* segment, s32 repeatCount);
+using SegmentDownloadFn = HRESULT(__stdcall*)(IUnknown* segment, IUnknown* performance);
+using SegmentGetParamFn = HRESULT(__stdcall*)(IUnknown* segment, const GUID& parameterType, u32 groupBits, u32 trackIndex, s32 time, s32* nextTimeOut, void* parameterData);
+using SegmentSetParamFn = HRESULT(__stdcall*)(IUnknown* segment, const GUID& parameterType, u32 groupBits, u32 trackIndex, s32 time, void* parameterData);
+using AudiopathActivateFn = HRESULT(__stdcall*)(IUnknown* audiopath, BOOL activate);
+using AudiopathSetVolumeFn = HRESULT(__stdcall*)(IUnknown* audiopath, s32 volume, s32 duration);
+using AudiopathGetObjectInPathFn = HRESULT(__stdcall*)(IUnknown* audiopath, s32 pchannel, u32 stage, u32 buffer, const GUID& objectGuid, u32 index, const GUID& interfaceId, void** objectOut);
+using DirectSoundBufferSetFxFn = HRESULT(__stdcall*)(IUnknown* buffer, u32 effectCount, DSEFFECTDESC* effectDescriptors, u32* resultCodes);
+using DirectSoundBufferGetObjectInPathFn = HRESULT(__stdcall*)(IUnknown* buffer, const GUID& objectGuid, u32 index, const GUID& interfaceId, void** objectOut);
+using DirectSoundGetParameterFn = HRESULT(__stdcall*)(IUnknown* interfaceValue, void* parameterData);
+using DirectSoundSetScalarFn = HRESULT(__stdcall*)(IUnknown* interfaceValue, u32 value);
+using DirectSoundSetPositionFn = HRESULT(__stdcall*)(IUnknown* interfaceValue, u32 x, u32 y, u32 z, u32 applyMode);
+using DirectSoundEffectParametersFn = HRESULT(__stdcall*)(IUnknown* effect, void* parameterData);
+using PerformanceIsPlayingFn = HRESULT(__stdcall*)(IUnknown* performance, IUnknown* segment, IUnknown* segmentState);
+using PerformancePlaySegmentExFn = HRESULT(__stdcall*)(IUnknown* performance, IUnknown* source, const WCHAR* segmentName, IUnknown* transition, u32 flags, u32 startTimeLow, u32 startTimeHigh, IUnknown** segmentStateOut, IUnknown* from, IUnknown* audiopath);
+using PerformanceStopExFn = HRESULT(__stdcall*)(IUnknown* performance, IUnknown* objectToStop, u32 stopTimeLow, u32 stopTimeHigh, u32 flags);
+using PerformanceSetDefaultAudioPathFn = HRESULT(__stdcall*)(IUnknown* performance, IUnknown* audiopath);
 using PerformanceCreateAudioPathFn = HRESULT(__stdcall*)(IUnknown* performance, IUnknown* sourceConfig, BOOL activate, IUnknown** audiopathOut);
 using PerformanceCreateStandardAudioPathFn = HRESULT(__stdcall*)(IUnknown* performance, u32 type, u32 pchannelCount, BOOL activate, IUnknown** audiopathOut);
+using DirectMusicConfigureSegmentFn = HRESULT(__stdcall*)(IUnknown* directMusic, IUnknown* segment, u32 value00, u32 value04);
+using PerformanceGetTimeFn = HRESULT(__stdcall*)(IUnknown* performance, LONGLONG* referenceTimeOut, s32* musicTimeOut);
+using PerformanceInvalidateFn = HRESULT(__stdcall*)(IUnknown* performance, s32 musicTime, u32 flags);
+using PerformanceRhythmToTimeFn = HRESULT(__stdcall*)(IUnknown* performance, u16 measure, u8 beat, u8 grid, s16 offset, const Gedx8TimeSignature* timeSignature, s32* musicTimeOut);
+
+static u8 ResolveSegmentRhythm(Gedx8SegmentPayload* payload);
+
+
+static Gedx8SegmentPayload* InitializeSegmentPayload(
+	Gedx8SegmentPayload* payload,
+	IUnknown* segment,
+	IUnknown* performance,
+	Gedx8DirectMusicOwner* directMusic)
+{
+	payload->state18 = 0;
+	payload->state1A = 0;
+	payload->length14 = 0;
+	payload->resolved10 = nullptr;
+	payload->resolved1B = 0;
+	payload->segment04 = segment;
+
+	const auto getLength = GetComMethod<SegmentGetLengthFn>(segment, 0x0C);
+	static_cast<void>(getLength(segment, &payload->length14));
+
+	payload->directMusic0C = directMusic;
+	payload->performance08 = performance;
+	payload->resolved1B = ResolveSegmentRhythm(payload);
+	return payload;
+}
 
 template<typename T>
 static Gedx8ObjectRegistry<T>* CreateObjectRegistry()
@@ -586,8 +749,16 @@ static void DestroyLoadedObject(Gedx8LoadedObject* object)
 		case 0:
 		{
 			auto* payload = static_cast<Gedx8SegmentPayload*>(object->payload);
+
+			if (payload->resolved10 != nullptr)
+			{
+				::operator delete(payload->resolved10);
+				payload->resolved10 = nullptr;
+			}
+
 			ReleaseInterface(payload->segment04);
-			payload->segment0C = nullptr;
+			payload->performance08 = nullptr;
+			payload->directMusic0C = nullptr;
 			delete payload;
 			object->payload = nullptr;
 			break;
@@ -776,6 +947,7 @@ static Gedx8DriverInstance* __stdcall Method100013F0()
 		return nullptr;
 
 	instance->audiopaths = CreateObjectRegistry<Gedx8Audiopath>();
+
 	instance->objects = CreateObjectRegistry<Gedx8LoadedObject>();
 
 	if (instance->audiopaths == nullptr || instance->objects == nullptr)
@@ -906,7 +1078,15 @@ static u8 InitializePerformance(Gedx8PerformanceOwner* owner, const Gedx8SynthIn
 
 	const auto initAudio = GetComMethod<PerformanceInitAudioFn>(performance, 0xB0);
 
-	const HRESULT initResult = initAudio(performance, nullptr, nullptr, reinterpret_cast<HWND>(config->windowHandle), 0, 0, 0x3F, &parameters);
+	const HRESULT initResult = initAudio(
+		performance,
+		nullptr,
+		nullptr,
+		reinterpret_cast<HWND>(config->windowHandle),
+		0,
+		0,
+		0x3F,
+		&parameters);
 
 	if (FAILED(initResult))
 		return 0;
@@ -1012,7 +1192,12 @@ static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* b
 		static_cast<void>(CoInitialize(nullptr));
 
 		void* loader = nullptr;
-		static_cast<void>(CoCreateInstance(CLSID_DirectMusicLoader_1000C398, nullptr, CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER, IID_IDirectMusicLoader8_1000C258, &loader));
+		static_cast<void>(CoCreateInstance(
+			CLSID_DirectMusicLoader_1000C398,
+			nullptr,
+			CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER,
+			IID_IDirectMusicLoader8_1000C258,
+			&loader));
 
 		state->interface10 = static_cast<IUnknown*>(loader);
 	}
@@ -1030,7 +1215,12 @@ static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* b
 }
 
 
-static bool LoadObservedSegment(Gedx8ControllerOwner* controller, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
+static bool LoadObservedSegment(
+	Gedx8ControllerOwner* controller,
+	s32 loadMode,
+	const Gedx8LoadDescriptor* descriptor,
+	Gedx8LoadedObject** objectOut,
+	const char* basePath)
 {
 	// Belegter Spielpfad aus 10003890:
 	// loadMode != 1, basePath != nullptr -> Loader-Modus 2.
@@ -1074,16 +1264,19 @@ static bool LoadObservedSegment(Gedx8ControllerOwner* controller, s32 loadMode, 
 		return false;
 	}
 
-	payload->segment04 = static_cast<IUnknown*>(segmentValue);
-	payload->segment0C = payload->segment04;
-
-	const auto getLength = GetComMethod<SegmentGetLengthFn>(payload->segment04, 0x0C);
-	static_cast<void>(getLength(payload->segment04, &payload->length14));
+	static_cast<void>(InitializeSegmentPayload(
+		payload,
+		static_cast<IUnknown*>(segmentValue),
+		controller->performance0C,
+		controller->directMusic10));
 
 	auto* loadedObject = new (std::nothrow) Gedx8LoadedObject{};
 
 	if (loadedObject == nullptr)
 	{
+		if (payload->resolved10 != nullptr)
+			::operator delete(payload->resolved10);
+
 		ReleaseInterface(payload->segment04);
 		delete payload;
 		return false;
@@ -1133,7 +1326,8 @@ static bool RegisterLoadedObject(Gedx8ObjectRegistry<Gedx8LoadedObject>* registr
 
 static u8 __stdcall Method10001990(Gedx8DriverInstance* instance, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
 {
-	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr || descriptor == nullptr || objectOut == nullptr)
+	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr ||
+		descriptor == nullptr || objectOut == nullptr)
 	{
 		return 0;
 	}
@@ -1202,7 +1396,10 @@ static u32 MapStandardAudiopathType(s32 type)
 }
 
 
-static Gedx8Audiopath* CreateAudiopath(Gedx8PerformanceOwner* performanceOwner, const Gedx8AudiopathConfig* config, Gedx8SegmentPayload* segmentPayload)
+static Gedx8Audiopath* CreateAudiopath(
+	Gedx8PerformanceOwner* performanceOwner,
+	const Gedx8AudiopathConfig* config,
+	Gedx8SegmentPayload* segmentPayload)
 {
 	if (performanceOwner == nullptr || performanceOwner->interface04 == nullptr)
 		return nullptr;
@@ -1226,7 +1423,12 @@ static Gedx8Audiopath* CreateAudiopath(Gedx8PerformanceOwner* performanceOwner, 
 
 			const u32 standardType = MapStandardAudiopathType(config->type);
 			const auto createStandard = GetComMethod<PerformanceCreateStandardAudioPathFn>(performance, 0xC4);
-			result = createStandard(performance, standardType, config->pchannelCount, FALSE, &audiopath->interface1C0);
+			result = createStandard(
+				performance,
+				standardType,
+				config->pchannelCount,
+				FALSE,
+				&audiopath->interface1C0);
 		}
 	}
 	else if (segmentPayload->segment04 != nullptr)
@@ -1326,51 +1528,295 @@ static u8 __stdcall Method10001B70(Gedx8DriverInstance* instance, const Gedx8Aud
 
 static u8 __stdcall Method10001CF0(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 activeState)
 {
-	return 0;
+	static_cast<void>(instance);
+
+	if (audiopath == nullptr || audiopath->interface1C0 == nullptr)
+		return 0;
+
+	const u8 requestedState = static_cast<u8>(activeState);
+
+	if (requestedState == audiopath->activated1B8)
+		return 1;
+
+	const auto activate = GetComMethod<AudiopathActivateFn>(audiopath->interface1C0, 0x10);
+
+	if (FAILED(activate(audiopath->interface1C0, requestedState)))
+		return 0;
+
+	audiopath->activated1B8 = requestedState;
+	return 1;
 }
 
 
 static u8 __stdcall Method10001D10(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 volume, s32 fadeMilliseconds)
 {
-	return 0;
+	static_cast<void>(instance);
+
+	if (audiopath == nullptr || audiopath->interface1C0 == nullptr)
+		return 0;
+
+	const auto setVolume = GetComMethod<AudiopathSetVolumeFn>(audiopath->interface1C0, 0x14);
+
+	if (FAILED(setVolume(audiopath->interface1C0, volume, fadeMilliseconds)))
+		return 0;
+
+	audiopath->volume1BC = volume;
+	return 1;
 }
 
 
-static u8 __stdcall Method10001D50(Gedx8DriverInstance* instance, s32 selector, s32 value, s32* storedValueOut)
+static const GUID GUID_AllObjects_1000C1C8 =
 {
-	if (storedValueOut != nullptr)
-		*storedValueOut = 0;
+	0xAA114DE5,
+	0xC262,
+	0x4169,
+	{ 0xA1, 0xC8, 0x23, 0xD6, 0x98, 0xCC, 0x73, 0xB5 }
+};
 
-	return 0;
+
+static HRESULT GetAudiopathObject(Gedx8Audiopath* audiopath, const GUID& interfaceId, void** objectOut)
+{
+	IUnknown* const interfaceValue = audiopath->interface1C0;
+	const auto getObjectInPath = GetComMethod<AudiopathGetObjectInPathFn>(interfaceValue, 0x0C);
+
+	return getObjectInPath(
+		interfaceValue,
+		-5,
+		0x6000,
+		0,
+		GUID_AllObjects_1000C1C8,
+		0,
+		interfaceId,
+		objectOut);
 }
 
 
-static u8 __stdcall Method10001D30(Gedx8DriverInstance* instance, s32* selectionOut)
+struct Gedx8EffectDefinition
 {
-	if (selectionOut != nullptr)
-		*selectionOut = 0;
+	const GUID* classId;
+	const GUID* interfaceId;
+};
 
-	return 0;
+
+static const Gedx8EffectDefinition g_effectDefinitions[9] =
+{
+	{ &GUID_DSFX_STANDARD_CHORUS,         &IID_IDirectSoundFXChorus },
+	{ &GUID_DSFX_STANDARD_COMPRESSOR,     &IID_IDirectSoundFXCompressor },
+	{ &GUID_DSFX_STANDARD_DISTORTION,      &IID_IDirectSoundFXDistortion },
+	{ &GUID_DSFX_STANDARD_ECHO,            &IID_IDirectSoundFXEcho },
+	{ &GUID_DSFX_STANDARD_FLANGER,         &IID_IDirectSoundFXFlanger },
+	{ &GUID_DSFX_STANDARD_GARGLE,          &IID_IDirectSoundFXGargle },
+	{ &GUID_DSFX_STANDARD_I3DL2REVERB,     &IID_IDirectSoundFXI3DL2Reverb },
+	{ &GUID_DSFX_STANDARD_PARAMEQ,         &IID_IDirectSoundFXParamEq },
+	{ &GUID_DSFX_WAVES_REVERB,             &IID_IDirectSoundFXWavesReverb }
+};
+
+
+static HRESULT AddAudiopathEffect(
+	Gedx8Audiopath* audiopath,
+	const GUID& classId,
+	const GUID& interfaceId,
+	IUnknown** effectOut)
+{
+	const u8 effectIndex = audiopath->effectCount001;
+	DSEFFECTDESC& descriptor = audiopath->effectDescriptors004[effectIndex];
+	descriptor.dwSize = sizeof(DSEFFECTDESC);
+	descriptor.guidDSFXClass = classId;
+
+	// FUN_10002C90 initialisiert den lokalen Zeiger mit `this`, bevor
+	// FUN_10002C60 ihn über IDirectMusicAudioPath8::GetObjectInPath ersetzt.
+	IUnknown* buffer = reinterpret_cast<IUnknown*>(audiopath);
+	HRESULT result = GetAudiopathObject(
+		audiopath,
+		IID_IDirectSoundBuffer8,
+		reinterpret_cast<void**>(&buffer));
+
+	if (FAILED(result))
+		return result;
+
+	const auto setFx = GetComMethod<DirectSoundBufferSetFxFn>(buffer, 0x54);
+	result = setFx(
+		buffer,
+		static_cast<u32>(effectIndex) + 1,
+		audiopath->effectDescriptors004,
+		audiopath->effectResults124);
+
+	if (FAILED(result))
+		return result;
+
+	++audiopath->effectCount001;
+
+	const auto getObjectInPath = GetComMethod<DirectSoundBufferGetObjectInPathFn>(buffer, 0x5C);
+	return getObjectInPath(buffer, classId, 0, interfaceId, reinterpret_cast<void**>(effectOut));
 }
 
 
-static u8 __stdcall Method10001D70(Gedx8DriverInstance* instance, s32 selector, s32 value, s32* storedValueOut)
+static u8 SetOrGetAudiopathParameter(
+	Gedx8Audiopath* audiopath,
+	s32 selector,
+	void* parameterData,
+	u8 setParameter)
 {
-	if (storedValueOut != nullptr)
-		*storedValueOut = 0;
+	if (audiopath == nullptr || audiopath->interface1C0 == nullptr)
+		return 0;
 
-	return 0;
+	if (selector < 0 || selector > 12)
+		return 0;
+
+	if (parameterData == nullptr && setParameter != 0)
+	{
+		parameterData = reinterpret_cast<u8*>(audiopath)
+			+ 0x17C
+			+ static_cast<u32>(selector) * sizeof(u32);
+	}
+
+	IUnknown*& parameterInterface = audiopath->parameterInterfaces148[selector];
+
+	if (selector <= 3)
+	{
+		if (selector == 1 && audiopath->pathType1B0 != 2 && audiopath->pathType1B0 != 3)
+			return 0;
+
+		if (selector == 3 && audiopath->pathType1B0 != 0)
+			return 0;
+
+		if (parameterInterface == nullptr)
+		{
+			const GUID& interfaceId = selector == 3
+				? IID_IDirectSound3DBuffer
+				: IID_IDirectSoundBuffer8;
+
+			if (FAILED(GetAudiopathObject(
+				audiopath,
+				interfaceId,
+				reinterpret_cast<void**>(&parameterInterface))))
+			{
+				return 0;
+			}
+		}
+
+		HRESULT result = E_FAIL;
+
+		if (selector == 3)
+		{
+			if (setParameter != 0)
+			{
+				const u32* const position = static_cast<const u32*>(parameterData);
+				const auto setPosition = GetComMethod<DirectSoundSetPositionFn>(parameterInterface, 0x4C);
+				result = setPosition(
+					parameterInterface,
+					position[0],
+					position[1],
+					position[2],
+					0);
+			}
+			else
+			{
+				const auto getPosition = GetComMethod<DirectSoundGetParameterFn>(parameterInterface, 0x28);
+				result = getPosition(parameterInterface, parameterData);
+			}
+		}
+		else if (setParameter != 0)
+		{
+			static const u32 setOffsets[3] = { 0x3C, 0x40, 0x44 };
+			const auto setValue = GetComMethod<DirectSoundSetScalarFn>(parameterInterface, setOffsets[selector]);
+			result = setValue(parameterInterface, *static_cast<const u32*>(parameterData));
+		}
+		else
+		{
+			static const u32 getOffsets[3] = { 0x18, 0x1C, 0x20 };
+			const auto getValue = GetComMethod<DirectSoundGetParameterFn>(parameterInterface, getOffsets[selector]);
+			result = getValue(parameterInterface, parameterData);
+		}
+
+		return SUCCEEDED(result) ? 1 : 0;
+	}
+
+	if (parameterInterface == nullptr)
+	{
+		const Gedx8EffectDefinition& definition = g_effectDefinitions[selector - 4];
+
+		if (FAILED(AddAudiopathEffect(
+			audiopath,
+			*definition.classId,
+			*definition.interfaceId,
+			&parameterInterface)))
+		{
+			return 0;
+		}
+
+		void* const defaultParameterData = reinterpret_cast<u8*>(audiopath)
+			+ 0x17C
+			+ static_cast<u32>(selector) * sizeof(u32);
+
+		if (SetOrGetAudiopathParameter(audiopath, selector, defaultParameterData, 0) == 0)
+			return 0;
+	}
+
+	const u32 methodOffset = setParameter != 0 ? 0x0C : 0x10;
+	const auto accessParameters = GetComMethod<DirectSoundEffectParametersFn>(parameterInterface, methodOffset);
+	return SUCCEEDED(accessParameters(parameterInterface, parameterData)) ? 1 : 0;
 }
 
 
-static u8 __stdcall Method10001D90(Gedx8DriverInstance* instance, u8 value)
+static u8 __stdcall Method10001D50(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 selector, void* parameterData)
 {
+	static_cast<void>(instance);
+	return SetOrGetAudiopathParameter(audiopath, selector, parameterData, 1);
+}
+
+
+static u8 __stdcall Method10001D30(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32* volumeOut)
+{
+	static_cast<void>(instance);
+
+	if (audiopath == nullptr || volumeOut == nullptr)
+		return 0;
+
+	*volumeOut = audiopath->volume1BC;
+	return 1;
+}
+
+
+static u8 __stdcall Method10001D70(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, s32 selector, void* parameterData)
+{
+	static_cast<void>(instance);
+	return SetOrGetAudiopathParameter(audiopath, selector, parameterData, 0);
+}
+
+
+static u8 __stdcall Method10001D90(Gedx8DriverInstance* instance, u32 unused0, u32 unused1)
+{
+	static_cast<void>(instance);
+	static_cast<void>(unused0);
+	static_cast<void>(unused1);
 	return 0;
 }
 
 
 static u8 __stdcall Method10001DA0(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath)
 {
+	if (instance == nullptr || instance->audiopaths == nullptr)
+		return 0;
+
+	Gedx8ObjectRegistry<Gedx8Audiopath>* const registry = instance->audiopaths;
+
+	for (u32 index = registry->usedCount; index > 0; --index)
+	{
+		const u32 entryIndex = index - 1;
+		Gedx8Audiopath* const entry = registry->entries[entryIndex];
+
+		if (entry != audiopath || entry == nullptr || entry->active == 0)
+			continue;
+
+		DestroyAudiopath(entry);
+		registry->entries[entryIndex] = nullptr;
+
+		// Das Original liest den gerade auf nullptr gesetzten Eintrag nochmals
+		// und verringert activeCount daher nicht. Dieses Verhalten ist absichtlich.
+		return 1;
+	}
+
 	return 0;
 }
 
@@ -1379,24 +1825,137 @@ static u8 __stdcall Method10001DA0(Gedx8DriverInstance* instance, Gedx8Audiopath
 // Playback
 // -----------------------------------------------------------------------------
 
-static u8 __stdcall Method10001E30(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, Gedx8LoadedObject* object, s32 flags, s32 startTime, s32 repeatCount, s32 reserved)
+static u8 StartSegmentPlayback(
+	Gedx8SegmentPayload* payload,
+	Gedx8Audiopath* audiopath,
+	u32 flags,
+	const Gedx8StartInfo* startInfo,
+	s32 repeatCount,
+	u8 downloadBeforePlay)
 {
-	return 0;
+	if (payload == nullptr || payload->segment04 == nullptr || payload->performance08 == nullptr ||
+		audiopath == nullptr || audiopath->interface1C0 == nullptr)
+	{
+		return 0;
+	}
+
+	if (downloadBeforePlay == 1)
+	{
+		const auto download = GetComMethod<SegmentDownloadFn>(payload->segment04, 0x74);
+
+		if (FAILED(download(payload->segment04, payload->performance08)))
+			return 0;
+	}
+
+	const auto setRepeats = GetComMethod<SegmentSetRepeatsFn>(payload->segment04, 0x18);
+
+	if (FAILED(setRepeats(payload->segment04, repeatCount)))
+		return 0;
+
+	if (startInfo != nullptr)
+	{
+		const auto setDefaultAudiopath = GetComMethod<PerformanceSetDefaultAudioPathFn>(payload->performance08, 0xC8);
+
+		if (SUCCEEDED(setDefaultAudiopath(payload->performance08, audiopath->interface1C0)))
+		{
+			// FUN_10004190 ignoriert den Rückgabewert von FUN_10002DD0.
+			if (payload->directMusic0C != nullptr && payload->directMusic0C->interface04 != nullptr)
+			{
+				const auto configureSegment = GetComMethod<DirectMusicConfigureSegmentFn>(payload->directMusic0C->interface04, 0x2C);
+				static_cast<void>(configureSegment(
+					payload->directMusic0C->interface04,
+					payload->segment04,
+					startInfo->value00,
+					startInfo->value04));
+			}
+
+			return 1;
+		}
+	}
+
+	const auto playSegmentEx = GetComMethod<PerformancePlaySegmentExFn>(payload->performance08, 0xB4);
+	const HRESULT result = playSegmentEx(
+		payload->performance08,
+		payload->segment04,
+		nullptr,
+		nullptr,
+		flags,
+		0,
+		0,
+		nullptr,
+		nullptr,
+		audiopath->interface1C0);
+
+	return SUCCEEDED(result) ? 1 : 0;
+}
+
+
+static u8 __stdcall Method10001E30(Gedx8DriverInstance* instance, Gedx8Audiopath* audiopath, Gedx8LoadedObject* object, u32 flags, const Gedx8StartInfo* startInfo, s32 repeatCount, u8 downloadBeforePlay)
+{
+	static_cast<void>(instance);
+
+	if (object == nullptr || object->kind != 0)
+		return 0;
+
+	return StartSegmentPlayback(
+		static_cast<Gedx8SegmentPayload*>(object->payload),
+		audiopath,
+		flags,
+		startInfo,
+		repeatCount,
+		downloadBeforePlay);
+}
+
+
+static u8 StopSegmentPlayback(Gedx8SegmentPayload* payload, u32 flags)
+{
+	if (payload == nullptr || payload->segment04 == nullptr || payload->performance08 == nullptr)
+		return 0;
+
+	const auto stopEx = GetComMethod<PerformanceStopExFn>(payload->performance08, 0xB8);
+	return SUCCEEDED(stopEx(payload->performance08, payload->segment04, 0, 0, flags)) ? 1 : 0;
 }
 
 
 static u8 __stdcall Method10001E70(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, s32 stopMode)
 {
-	return 0;
+	static_cast<void>(instance);
+
+	if (object == nullptr || object->kind != 0)
+		return 0;
+
+	return StopSegmentPlayback(static_cast<Gedx8SegmentPayload*>(object->payload), static_cast<u32>(stopMode));
+}
+
+
+static u8 GetSegmentPlaybackState(Gedx8SegmentPayload* payload, u8* stateOut)
+{
+	if (stateOut == nullptr)
+		return 0;
+
+	*stateOut = 0;
+
+	if (payload == nullptr || payload->segment04 == nullptr || payload->performance08 == nullptr)
+		return 0;
+
+	const auto isPlaying = GetComMethod<PerformanceIsPlayingFn>(payload->performance08, 0x38);
+	const HRESULT result = isPlaying(payload->performance08, payload->segment04, nullptr);
+
+	if (result == 0)
+		*stateOut = 1;
+
+	return SUCCEEDED(result) ? 1 : 0;
 }
 
 
 static u8 __stdcall Method10001E90(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, u8* stateOut)
 {
-	if (stateOut != nullptr)
-		*stateOut = 0;
+	static_cast<void>(instance);
 
-	return 0;
+	if (object == nullptr || object->kind != 0)
+		return 0;
+
+	return GetSegmentPlaybackState(static_cast<Gedx8SegmentPayload*>(object->payload), stateOut);
 }
 
 
@@ -1404,27 +1963,291 @@ static u8 __stdcall Method10001E90(Gedx8DriverInstance* instance, Gedx8LoadedObj
 // Composite helpers
 // -----------------------------------------------------------------------------
 
+static u8 ResolveSegmentRhythm(Gedx8SegmentPayload* payload)
+{
+	Gedx8ChordKey finalChord{};
+	const auto getParam = GetComMethod<SegmentGetParamFn>(payload->segment04, 0x48);
+
+	// FUN_10004670 ignores this first HRESULT. If the query fails, the
+	// zero-filled chord keeps measure20 at zero and the function fails below.
+	static_cast<void>(getParam(
+		payload->segment04,
+		GUID_ChordParam_1000C318,
+		0xFFFFFFFFu,
+		0x80000000u,
+		payload->length14,
+		nullptr,
+		&finalChord));
+
+	Gedx8TimeSignature timeSignature{};
+	const HRESULT signatureResult = getParam(
+		payload->segment04,
+		GUID_TimeSignature_1000C308,
+		0xFFFFFFFFu,
+		0x80000000u,
+		0,
+		nullptr,
+		&timeSignature);
+
+	if (FAILED(signatureResult) || finalChord.measure20 == 0)
+		return 0;
+
+	payload->state1A = timeSignature.beatsPerMeasure04;
+	payload->state18 = finalChord.measure20;
+
+	const u32 entryCount = static_cast<u32>(payload->state1A) * payload->state18;
+	payload->resolved10 = static_cast<s32*>(::operator new(entryCount * sizeof(s32)));
+
+	const auto rhythmToTime = GetComMethod<PerformanceRhythmToTimeFn>(payload->performance08, 0xAC);
+	HRESULT result = signatureResult;
+	u8 measure = 0;
+
+	do
+	{
+		u8 beat = 0;
+
+		while (beat < payload->state1A)
+		{
+			const u8 index = static_cast<u8>(payload->state1A * measure + beat);
+			result = rhythmToTime(
+				payload->performance08,
+				measure,
+				beat,
+				0,
+				0,
+				&timeSignature,
+				&payload->resolved10[index]);
+			++beat;
+		}
+
+		++measure;
+	} while (measure < payload->state18);
+
+	return SUCCEEDED(result) ? 1 : 0;
+}
+
+
+static u8 SetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** structureAddress)
+{
+	if (payload->segment04 == nullptr)
+		return 0;
+
+	const auto setParam = GetComMethod<SegmentSetParamFn>(payload->segment04, 0x4C);
+
+	if (mode == 0)
+	{
+		if (structureAddress == nullptr)
+			return 0;
+
+		const auto* const tempoWords = static_cast<const u32*>(*structureAddress);
+		s32 currentTime = 0;
+		const auto getTime = GetComMethod<PerformanceGetTimeFn>(payload->performance08, 0x3C);
+
+		if (FAILED(getTime(payload->performance08, nullptr, &currentTime)))
+			return 0;
+
+		Gedx8TempoParam tempo{};
+		tempo.time00 = currentTime;
+		tempo.tempoLow08 = tempoWords[0];
+		tempo.tempoHigh0C = tempoWords[1];
+
+		if (FAILED(setParam(
+			payload->segment04,
+			GUID_TempoParam_1000C2F8,
+			0xFFFFFFFFu,
+			0x80000000u,
+			0,
+			&tempo)))
+		{
+			return 0;
+		}
+	}
+	else if (mode == 1)
+	{
+		if (structureAddress == nullptr || payload->resolved1B == 0)
+			return 0;
+
+		auto* const control = static_cast<Gedx8ChordControl*>(*structureAddress);
+
+		if (control->measure01 > payload->state18 || control->beat02 > payload->state1A)
+			return 0;
+
+		const u8 index = static_cast<u8>(payload->state1A * control->measure01 + control->beat02);
+		const s32 time = payload->resolved10[index];
+		Gedx8ChordKey chord{};
+		const auto getParam = GetComMethod<SegmentGetParamFn>(payload->segment04, 0x48);
+
+		if (FAILED(getParam(
+			payload->segment04,
+			GUID_ChordParam_1000C318,
+			0xFFFFFFFFu,
+			0x80000000u,
+			time,
+			nullptr,
+			&chord)))
+		{
+			return 0;
+		}
+
+		for (u8 subChord = 0; subChord < chord.subChordCount23; ++subChord)
+			chord.subChords24[subChord].chordRoot10 = control->chordRoot03;
+
+		if (FAILED(setParam(
+			payload->segment04,
+			GUID_ChordParam_1000C318,
+			0xFFFFFFFFu,
+			0x80000000u,
+			time,
+			&chord)))
+		{
+			return 0;
+		}
+	}
+	else
+	{
+		return 0;
+	}
+
+	const auto invalidate = GetComMethod<PerformanceInvalidateFn>(payload->performance08, 0x78);
+	return SUCCEEDED(invalidate(payload->performance08, 0, 0x2000u)) ? 1 : 0;
+}
+
+
+static u8 GetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** structureAddress)
+{
+	if (payload->segment04 == nullptr || structureAddress == nullptr)
+		return 0;
+
+	void* const structure = *structureAddress;
+
+	if (structure == nullptr)
+		return 0;
+
+	const auto getParam = GetComMethod<SegmentGetParamFn>(payload->segment04, 0x48);
+
+	if (mode == 0)
+	{
+		Gedx8TempoParam tempo{};
+		s32 currentTime = 0;
+		const auto getTime = GetComMethod<PerformanceGetTimeFn>(payload->performance08, 0x3C);
+
+		if (FAILED(getTime(payload->performance08, nullptr, &currentTime)))
+			return 0;
+
+		const HRESULT result = getParam(
+			payload->segment04,
+			GUID_TempoParam_1000C2F8,
+			0xFFFFFFFFu,
+			0x80000000u,
+			0,
+			nullptr,
+			&tempo);
+
+		auto* const tempoWords = static_cast<u32*>(structure);
+		tempoWords[0] = tempo.tempoLow08;
+		tempoWords[1] = tempo.tempoHigh0C;
+		return SUCCEEDED(result) ? 1 : 0;
+	}
+
+	if (mode != 1)
+		return 0;
+
+	auto* const control = static_cast<Gedx8ChordControl*>(structure);
+	Gedx8ChordKey chord{};
+
+	if (control->useCurrentTime00 != 0)
+	{
+		s32 currentTime = 0;
+		const auto getTime = GetComMethod<PerformanceGetTimeFn>(payload->performance08, 0x3C);
+
+		if (FAILED(getTime(payload->performance08, nullptr, &currentTime)))
+			return 0;
+
+		if (FAILED(getParam(
+			payload->segment04,
+			GUID_ChordParam_1000C318,
+			0xFFFFFFFFu,
+			0x80000000u,
+			currentTime,
+			nullptr,
+			&chord)))
+		{
+			return 0;
+		}
+
+		control->measure01 = static_cast<u8>(chord.measure20);
+		control->beat02 = chord.beat22;
+		control->chordRoot03 = chord.subChords24[0].chordRoot10;
+		return 1;
+	}
+
+	if (control->measure01 > payload->state18 ||
+		control->beat02 > payload->state1A ||
+		payload->resolved1B == 0)
+	{
+		return 0;
+	}
+
+	const u8 index = static_cast<u8>(payload->state1A * control->measure01 + control->beat02);
+
+	if (FAILED(getParam(
+		payload->segment04,
+		GUID_ChordParam_1000C318,
+		0xFFFFFFFFu,
+		0x80000000u,
+		payload->resolved10[index],
+		nullptr,
+		&chord)))
+	{
+		return 0;
+	}
+
+	control->chordRoot03 = chord.subChords24[0].chordRoot10;
+	return 1;
+}
+
+
+static u8 GetSegmentRhythmDimensions(Gedx8SegmentPayload* payload, u8* valuesOut)
+{
+	if (valuesOut == nullptr || payload->resolved1B == 0)
+		return 0;
+
+	valuesOut[0] = static_cast<u8>(payload->state18);
+	valuesOut[1] = payload->state1A;
+	return 1;
+}
+
+
 static u8 __stdcall Method10001EB0(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, s32 mode, void* structure)
 {
-	return 0;
+	static_cast<void>(instance);
+
+	if (object->kind != 0)
+		return 0;
+
+	return SetSegmentComposite(static_cast<Gedx8SegmentPayload*>(object->payload), mode, &structure);
 }
 
 
 static u8 __stdcall Method10001EE0(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, s32 mode, void* structure)
 {
-	return 0;
+	static_cast<void>(instance);
+
+	if (object->kind != 0)
+		return 0;
+
+	return GetSegmentComposite(static_cast<Gedx8SegmentPayload*>(object->payload), mode, &structure);
 }
 
 
-static u8 __stdcall Method10001F10(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, u8* value0Out, u8* value1Out)
+static u8 __stdcall Method10001F10(Gedx8DriverInstance* instance, Gedx8LoadedObject* object, u8* valuesOut)
 {
-	if (value0Out != nullptr)
-		*value0Out = 0;
+	static_cast<void>(instance);
 
-	if (value1Out != nullptr)
-		*value1Out = 0;
+	if (object->kind != 0)
+		return 0;
 
-	return 0;
+	return GetSegmentRhythmDimensions(static_cast<Gedx8SegmentPayload*>(object->payload), valuesOut);
 }
 
 
