@@ -179,9 +179,7 @@ static_assert(sizeof(Gedx8ChordKey) == 0xCC, "DMUS_CHORD_KEY layout mismatch");
 static_assert(offsetof(Gedx8ChordKey, measure20) == 0x20, "DMUS_CHORD_KEY measure offset mismatch");
 static_assert(offsetof(Gedx8ChordKey, beat22) == 0x22, "DMUS_CHORD_KEY beat offset mismatch");
 static_assert(offsetof(Gedx8ChordKey, subChordCount23) == 0x23, "DMUS_CHORD_KEY count offset mismatch");
-static_assert(
-	offsetof(Gedx8ChordKey, subChords24) + offsetof(Gedx8SubChord, chordRoot10) == 0x34,
-	"DMUS_CHORD_KEY root offset mismatch");
+static_assert(offsetof(Gedx8ChordKey, subChords24) + offsetof(Gedx8SubChord, chordRoot10) == 0x34, "DMUS_CHORD_KEY root offset mismatch");
 
 
 struct Gedx8ChordControl
@@ -449,11 +447,7 @@ using PerformanceRhythmToTimeFn = HRESULT(__stdcall*)(IUnknown* performance, u16
 static u8 ResolveSegmentRhythm(Gedx8SegmentPayload* payload);
 
 
-static Gedx8SegmentPayload* InitializeSegmentPayload(
-	Gedx8SegmentPayload* payload,
-	IUnknown* segment,
-	IUnknown* performance,
-	Gedx8DirectMusicOwner* directMusic)
+static Gedx8SegmentPayload* InitializeSegmentPayload(Gedx8SegmentPayload* payload, IUnknown* segment, IUnknown* performance, Gedx8DirectMusicOwner* directMusic)
 {
 	payload->state18 = 0;
 	payload->state1A = 0;
@@ -499,7 +493,7 @@ static Gedx8PerformanceOwner* CreatePerformanceOwner()
 	if (owner == nullptr)
 		return nullptr;
 
-	// Original 10003CC0 ignoriert beide HRESULT-Werte.
+	// Original 10003CC0 ignores both HRESULT values.
 	static_cast<void>(CoInitialize(nullptr));
 
 	void* value = nullptr;
@@ -518,7 +512,7 @@ static Gedx8DirectMusicOwner* CreateDirectMusicOwner(IUnknown* performance)
 	if (owner == nullptr)
 		return nullptr;
 
-	// Original 10002D90 ignoriert ebenfalls beide HRESULT-Werte.
+	// Original 10002D90 also ignores both HRESULT values.
 	static_cast<void>(CoInitialize(nullptr));
 
 	void* value = nullptr;
@@ -543,8 +537,7 @@ static Gedx8ControllerOwner* CreateControllerOwner(IUnknown* performance, Gedx8D
 
 	if (owner->state00 != nullptr)
 	{
-		// Der originale interne VTable-Pointer wird in unserer
-		// Neuimplementierung später durch direkte C++-Methoden ersetzt.
+		// The original internal vtable pointer will be replaced in our reimplementation later with direct C++ methods.
 		owner->state00->vtable00 = nullptr;
 		owner->state00->owner04 = owner;
 		owner->state00->mode08 = 3;
@@ -682,9 +675,9 @@ static void DestroyControllerOwner(Gedx8ControllerOwner*& owner)
 	{
 		// Original: FUN_10003550 + FUN_10004966.
 		//
-		// FUN_10003550 setzt lediglich die interne VTable zurück.
-		// Da diese Neuimplementierung keine Original-VTable verwendet,
-		// ist nur die Speicherfreigabe erforderlich.
+		// FUN_10003550 merely resets the internal vtable.
+		// Since this reimplementation does not use the original vtable,
+		// only freeing the memory is necessary.
 		if (state->object0C != nullptr)
 		{
 			::operator delete(state->object0C);
@@ -700,7 +693,7 @@ static void DestroyControllerOwner(Gedx8ControllerOwner*& owner)
 		owner->state00 = nullptr;
 	}
 
-	// performance0C und directMusic10 sind nur geliehene Pointer.
+	// performance0C and directMusic10 are only borrowed pointers.
 	owner->performance0C = nullptr;
 	owner->directMusic10 = nullptr;
 
@@ -717,7 +710,7 @@ static void DestroyDirectMusicOwner(Gedx8DirectMusicOwner*& owner)
 	// Original: FUN_10002DC0.
 	ReleaseInterface(owner->interface04);
 
-	// Geliehener Pointer, daher kein zweites Release.
+	// Borrowed pointer, therefore no second Release.
 	owner->performance08 = nullptr;
 
 	delete owner;
@@ -766,14 +759,14 @@ static void DestroyLoadedObject(Gedx8LoadedObject* object)
 
 		case 1:
 		case 2:
-			// Original: FUN_10003E80 ist leer.
+			// Original: FUN_10003E80 is empty.
 			::operator delete(object->payload);
 			object->payload = nullptr;
 			break;
 
 		default:
-			// Das Original ruft für unbekannte Arten keinen
-			// Payload-Destruktor und keine Payload-Freigabe auf.
+			// The original does not call a payload destructor or free the payload
+			// for unknown kinds.
 			break;
 		}
 	}
@@ -835,14 +828,14 @@ static void DestroyDriverInstance(Gedx8DriverInstance* instance)
 	if (instance == nullptr)
 		return;
 
-	// Reihenfolge aus 100010D0 und 10001630:
+	// Order from 100010D0 and 10001630:
 	//
 	// +0C Performance
 	// +10 Controller
 	// +14 DirectMusic
-	// +04 Audiopath-Registry
-	// +08 LoadedObject-Registry
-	// anschließend die Instanz selbst
+	// +04 Audiopath registry
+	// +08 LoadedObject registry
+	// then the instance itself
 
 	DestroyPerformanceOwner(instance->performance);
 	DestroyControllerOwner(instance->controller);
@@ -890,7 +883,7 @@ static u8 __stdcall Method10001000(s32 /*arg0*/, s32 /*arg1*/)
 
 static void __stdcall Method10001090()
 {
-	// Das Original ignoriert den Rückgabewert.
+	// The original ignores the return value.
 	static_cast<void>(ProbeD3D8());
 
 	g_instanceRegistry = nullptr;
@@ -899,7 +892,7 @@ static void __stdcall Method10001090()
 	if (g_instanceRegistry == nullptr)
 		return;
 
-	// Die Wertinitialisierung durch {} setzt alle Felder auf null/0.
+	// Value initialization by {} sets all fields to null/0.
 }
 
 
@@ -937,7 +930,7 @@ static void __stdcall Method100010D0()
 
 static Gedx8DriverInstance* __stdcall Method100013F0()
 {
-	// Das Original setzt einen vorherigen Aufruf von 10001090 voraus.
+	// The original assumes a prior call to 10001090.
 	if (g_instanceRegistry == nullptr)
 		return nullptr;
 
@@ -987,7 +980,7 @@ static Gedx8DriverInstance* __stdcall Method100013F0()
 
 	u32 insertionIndex = g_instanceRegistry->usedCount;
 
-	// Ersten freien oder inaktiven Slot suchen.
+	// Find first free or inactive slot.
 	for (u32 index = 0; index < g_instanceRegistry->usedCount; ++index)
 	{
 		Gedx8DriverInstance* const existing = g_instanceRegistry->entries[index];
@@ -999,7 +992,7 @@ static Gedx8DriverInstance* __stdcall Method100013F0()
 		}
 	}
 
-	// Kein freier Slot: Array wie 100022C0 vergrößern.
+	// No free slot: grow the array like at 100022C0.
 	if (insertionIndex == g_instanceRegistry->usedCount)
 	{
 		if (g_instanceRegistry->usedCount == g_instanceRegistry->capacity)
@@ -1032,8 +1025,8 @@ static Gedx8DriverInstance* __stdcall Method100013F0()
 
 static u8 __cdecl Method10001630(Gedx8DriverInstance* instance)
 {
-	// Sicherheitsabweichung vom Original:
-	// Das Original würde bei einer nicht initialisierten Registry abstürzen.
+	// Safety deviation from the original:
+	// The original would crash on an uninitialized registry.
 	if (g_instanceRegistry == nullptr)
 		return 1;
 
@@ -1078,15 +1071,7 @@ static u8 InitializePerformance(Gedx8PerformanceOwner* owner, const Gedx8SynthIn
 
 	const auto initAudio = GetComMethod<PerformanceInitAudioFn>(performance, 0xB0);
 
-	const HRESULT initResult = initAudio(
-		performance,
-		nullptr,
-		nullptr,
-		reinterpret_cast<HWND>(config->windowHandle),
-		0,
-		0,
-		0x3F,
-		&parameters);
+	const HRESULT initResult = initAudio(performance, nullptr, nullptr, reinterpret_cast<HWND>(config->windowHandle), 0, 0, 0x3F, &parameters);
 
 	if (FAILED(initResult))
 		return 0;
@@ -1098,7 +1083,7 @@ static u8 InitializePerformance(Gedx8PerformanceOwner* owner, const Gedx8SynthIn
 	s32 autoDownload = 1;
 	owner->masterVolume00 = 0;
 
-	// Das Original ignoriert die HRESULT-Werte dieser vier Initialisierungen.
+	// The original ignores the HRESULT values of these four initializations.
 	static_cast<void>(setGlobalParam(performance, GUID_PerfMasterTempo_1000C2B8, &masterTempo, sizeof(masterTempo)));
 	static_cast<void>(setGlobalParam(performance, GUID_PerfMasterGrooveLevel_1000C2C8, &masterGrooveLevel, sizeof(masterGrooveLevel)));
 	static_cast<void>(setGlobalParam(performance, GUID_PerfAutoDownload_1000C2E8, &autoDownload, sizeof(autoDownload)));
@@ -1133,8 +1118,8 @@ static u8 SetPerformanceMasterVolume(Gedx8PerformanceOwner* owner, s32 value)
 
 		const auto setGlobalParam = GetComMethod<PerformanceSetGlobalParamFn>(performance, 0x88);
 
-		// FUN_10003E20 aktualisiert den Cache vor dem COM-Aufruf und ignoriert
-		// dessen HRESULT. Ein vorhandenes Performance-Interface bedeutet Erfolg.
+		// FUN_10003E20 updates the cache before the COM call and ignores its HRESULT.
+		// Ein vorhandenes Performance-Interface bedeutet Erfolg.
 		static_cast<void>(setGlobalParam(performance, GUID_PerfMasterVolume_1000C2D8, &value, sizeof(value)));
 	}
 
@@ -1192,12 +1177,7 @@ static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* b
 		static_cast<void>(CoInitialize(nullptr));
 
 		void* loader = nullptr;
-		static_cast<void>(CoCreateInstance(
-			CLSID_DirectMusicLoader_1000C398,
-			nullptr,
-			CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER,
-			IID_IDirectMusicLoader8_1000C258,
-			&loader));
+		static_cast<void>(CoCreateInstance(CLSID_DirectMusicLoader_1000C398, nullptr, CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER, IID_IDirectMusicLoader8_1000C258, &loader));
 
 		state->interface10 = static_cast<IUnknown*>(loader);
 	}
@@ -1215,12 +1195,7 @@ static bool SelectExternalLoader(Gedx8ControllerOwner* controller, const char* b
 }
 
 
-static bool LoadObservedSegment(
-	Gedx8ControllerOwner* controller,
-	s32 loadMode,
-	const Gedx8LoadDescriptor* descriptor,
-	Gedx8LoadedObject** objectOut,
-	const char* basePath)
+static bool LoadObservedSegment(Gedx8ControllerOwner* controller, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
 {
 	// Belegter Spielpfad aus 10003890:
 	// loadMode != 1, basePath != nullptr -> Loader-Modus 2.
@@ -1235,23 +1210,13 @@ static bool LoadObservedSegment(
 	objectDescriptor.validData = 0x12; // DMUS_OBJ_CLASS | DMUS_OBJ_FILENAME
 	objectDescriptor.classId = CLSID_DirectMusicSegment_1000C218;
 
-	static_cast<void>(MultiByteToWideChar(
-		CP_ACP,
-		0,
-		descriptor->fileName,
-		-1,
-		objectDescriptor.fileName,
-		MAX_PATH));
+	static_cast<void>(MultiByteToWideChar(CP_ACP, 0, descriptor->fileName, -1, objectDescriptor.fileName, MAX_PATH));
 
 	IUnknown* const loader = controller->state00->interface10;
 	const auto getObject = GetComMethod<LoaderGetObjectFn>(loader, 0x0C);
 
 	void* segmentValue = nullptr;
-	const HRESULT loadResult = getObject(
-		loader,
-		&objectDescriptor,
-		IID_IDirectMusicSegment8_1000C238,
-		&segmentValue);
+	const HRESULT loadResult = getObject(loader, &objectDescriptor, IID_IDirectMusicSegment8_1000C238, &segmentValue);
 
 	if (FAILED(loadResult) || segmentValue == nullptr)
 		return false;
@@ -1264,11 +1229,7 @@ static bool LoadObservedSegment(
 		return false;
 	}
 
-	static_cast<void>(InitializeSegmentPayload(
-		payload,
-		static_cast<IUnknown*>(segmentValue),
-		controller->performance0C,
-		controller->directMusic10));
+	static_cast<void>(InitializeSegmentPayload(payload, static_cast<IUnknown*>(segmentValue), controller->performance0C, controller->directMusic10));
 
 	auto* loadedObject = new (std::nothrow) Gedx8LoadedObject{};
 
@@ -1326,8 +1287,7 @@ static bool RegisterLoadedObject(Gedx8ObjectRegistry<Gedx8LoadedObject>* registr
 
 static u8 __stdcall Method10001990(Gedx8DriverInstance* instance, s32 loadMode, const Gedx8LoadDescriptor* descriptor, Gedx8LoadedObject** objectOut, const char* basePath)
 {
-	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr ||
-		descriptor == nullptr || objectOut == nullptr)
+	if (instance == nullptr || instance->controller == nullptr || instance->objects == nullptr || descriptor == nullptr || objectOut == nullptr)
 	{
 		return 0;
 	}
@@ -1353,8 +1313,7 @@ static u8 __stdcall Method10001AB0(Gedx8DriverInstance* instance, s32 value0, s3
 	if (instance == nullptr || instance->controller == nullptr || value0 == 0 || value1 == 0)
 		return 0;
 
-	// FUN_10003BC0: Diese beiden Werte aktivieren später den internen
-	// Ladepfad (loadMode == 1) von FUN_10003890.
+	// FUN_10003BC0: These two values later enable the internal load path (loadMode == 1) of FUN_10003890.
 	instance->controller->reserved04 = static_cast<u32>(value0);
 	instance->controller->reserved08 = static_cast<u32>(value1);
 	return 1;
@@ -1423,12 +1382,7 @@ static Gedx8Audiopath* CreateAudiopath(
 
 			const u32 standardType = MapStandardAudiopathType(config->type);
 			const auto createStandard = GetComMethod<PerformanceCreateStandardAudioPathFn>(performance, 0xC4);
-			result = createStandard(
-				performance,
-				standardType,
-				config->pchannelCount,
-				FALSE,
-				&audiopath->interface1C0);
+			result = createStandard(performance, standardType, config->pchannelCount, FALSE, &audiopath->interface1C0);
 		}
 	}
 	else if (segmentPayload->segment04 != nullptr)
@@ -1443,8 +1397,8 @@ static Gedx8Audiopath* CreateAudiopath(
 			result = createAudiopath(performance, sourceConfig, FALSE, &audiopath->interface1C0);
 		}
 
-		// Das Original gibt den von GetAudioPathConfig gelieferten Zeiger in
-		// FUN_10002380 nicht frei. Dieses Verhalten wird hier beibehalten.
+		// The original does not free the pointer returned by GetAudioPathConfig in FUN_10002380.
+		// Dieses Verhalten wird hier beibehalten.
 	}
 
 	if (FAILED(result) || audiopath->interface1C0 == nullptr)
@@ -1579,15 +1533,7 @@ static HRESULT GetAudiopathObject(Gedx8Audiopath* audiopath, const GUID& interfa
 	IUnknown* const interfaceValue = audiopath->interface1C0;
 	const auto getObjectInPath = GetComMethod<AudiopathGetObjectInPathFn>(interfaceValue, 0x0C);
 
-	return getObjectInPath(
-		interfaceValue,
-		-5,
-		0x6000,
-		0,
-		GUID_AllObjects_1000C1C8,
-		0,
-		interfaceId,
-		objectOut);
+	return getObjectInPath(interfaceValue, -5, 0x6000, 0, GUID_AllObjects_1000C1C8, 0, interfaceId, objectOut);
 }
 
 
@@ -1623,23 +1569,16 @@ static HRESULT AddAudiopathEffect(
 	descriptor.dwSize = sizeof(DSEFFECTDESC);
 	descriptor.guidDSFXClass = classId;
 
-	// FUN_10002C90 initialisiert den lokalen Zeiger mit `this`, bevor
-	// FUN_10002C60 ihn über IDirectMusicAudioPath8::GetObjectInPath ersetzt.
+	// FUN_10002C90 initializes the local pointer with `this` before
+	// FUN_10002C60 replaces it via IDirectMusicAudioPath8::GetObjectInPath.
 	IUnknown* buffer = reinterpret_cast<IUnknown*>(audiopath);
-	HRESULT result = GetAudiopathObject(
-		audiopath,
-		IID_IDirectSoundBuffer8,
-		reinterpret_cast<void**>(&buffer));
+	HRESULT result = GetAudiopathObject(audiopath, IID_IDirectSoundBuffer8, reinterpret_cast<void**>(&buffer));
 
 	if (FAILED(result))
 		return result;
 
 	const auto setFx = GetComMethod<DirectSoundBufferSetFxFn>(buffer, 0x54);
-	result = setFx(
-		buffer,
-		static_cast<u32>(effectIndex) + 1,
-		audiopath->effectDescriptors004,
-		audiopath->effectResults124);
+	result = setFx(buffer, static_cast<u32>(effectIndex) + 1, audiopath->effectDescriptors004, audiopath->effectResults124);
 
 	if (FAILED(result))
 		return result;
@@ -1651,11 +1590,7 @@ static HRESULT AddAudiopathEffect(
 }
 
 
-static u8 SetOrGetAudiopathParameter(
-	Gedx8Audiopath* audiopath,
-	s32 selector,
-	void* parameterData,
-	u8 setParameter)
+static u8 SetOrGetAudiopathParameter(Gedx8Audiopath* audiopath, s32 selector, void* parameterData, u8 setParameter)
 {
 	if (audiopath == nullptr || audiopath->interface1C0 == nullptr)
 		return 0;
@@ -1682,14 +1617,9 @@ static u8 SetOrGetAudiopathParameter(
 
 		if (parameterInterface == nullptr)
 		{
-			const GUID& interfaceId = selector == 3
-				? IID_IDirectSound3DBuffer
-				: IID_IDirectSoundBuffer8;
+			const GUID& interfaceId = selector == 3 ? IID_IDirectSound3DBuffer : IID_IDirectSoundBuffer8;
 
-			if (FAILED(GetAudiopathObject(
-				audiopath,
-				interfaceId,
-				reinterpret_cast<void**>(&parameterInterface))))
+			if (FAILED(GetAudiopathObject(audiopath, interfaceId, reinterpret_cast<void**>(&parameterInterface))))
 			{
 				return 0;
 			}
@@ -1703,12 +1633,7 @@ static u8 SetOrGetAudiopathParameter(
 			{
 				const u32* const position = static_cast<const u32*>(parameterData);
 				const auto setPosition = GetComMethod<DirectSoundSetPositionFn>(parameterInterface, 0x4C);
-				result = setPosition(
-					parameterInterface,
-					position[0],
-					position[1],
-					position[2],
-					0);
+				result = setPosition(parameterInterface, position[0], position[1], position[2], 0);
 			}
 			else
 			{
@@ -1736,18 +1661,12 @@ static u8 SetOrGetAudiopathParameter(
 	{
 		const Gedx8EffectDefinition& definition = g_effectDefinitions[selector - 4];
 
-		if (FAILED(AddAudiopathEffect(
-			audiopath,
-			*definition.classId,
-			*definition.interfaceId,
-			&parameterInterface)))
+		if (FAILED(AddAudiopathEffect(audiopath, *definition.classId, *definition.interfaceId, &parameterInterface)))
 		{
 			return 0;
 		}
 
-		void* const defaultParameterData = reinterpret_cast<u8*>(audiopath)
-			+ 0x17C
-			+ static_cast<u32>(selector) * sizeof(u32);
+		void* const defaultParameterData = reinterpret_cast<u8*>(audiopath) + 0x17C + static_cast<u32>(selector) * sizeof(u32);
 
 		if (SetOrGetAudiopathParameter(audiopath, selector, defaultParameterData, 0) == 0)
 			return 0;
@@ -1812,8 +1731,8 @@ static u8 __stdcall Method10001DA0(Gedx8DriverInstance* instance, Gedx8Audiopath
 		DestroyAudiopath(entry);
 		registry->entries[entryIndex] = nullptr;
 
-		// Das Original liest den gerade auf nullptr gesetzten Eintrag nochmals
-		// und verringert activeCount daher nicht. Dieses Verhalten ist absichtlich.
+		// The original reads the entry that was just set to nullptr again
+		// and therefore does not decrease activeCount. This behavior is intentional.
 		return 1;
 	}
 
@@ -1825,13 +1744,7 @@ static u8 __stdcall Method10001DA0(Gedx8DriverInstance* instance, Gedx8Audiopath
 // Playback
 // -----------------------------------------------------------------------------
 
-static u8 StartSegmentPlayback(
-	Gedx8SegmentPayload* payload,
-	Gedx8Audiopath* audiopath,
-	u32 flags,
-	const Gedx8StartInfo* startInfo,
-	s32 repeatCount,
-	u8 downloadBeforePlay)
+static u8 StartSegmentPlayback(Gedx8SegmentPayload* payload, Gedx8Audiopath* audiopath, u32 flags, const Gedx8StartInfo* startInfo, s32 repeatCount, u8 downloadBeforePlay)
 {
 	if (payload == nullptr || payload->segment04 == nullptr || payload->performance08 == nullptr ||
 		audiopath == nullptr || audiopath->interface1C0 == nullptr)
@@ -1858,15 +1771,11 @@ static u8 StartSegmentPlayback(
 
 		if (SUCCEEDED(setDefaultAudiopath(payload->performance08, audiopath->interface1C0)))
 		{
-			// FUN_10004190 ignoriert den Rückgabewert von FUN_10002DD0.
+			// FUN_10004190 ignores the return value of FUN_10002DD0.
 			if (payload->directMusic0C != nullptr && payload->directMusic0C->interface04 != nullptr)
 			{
 				const auto configureSegment = GetComMethod<DirectMusicConfigureSegmentFn>(payload->directMusic0C->interface04, 0x2C);
-				static_cast<void>(configureSegment(
-					payload->directMusic0C->interface04,
-					payload->segment04,
-					startInfo->value00,
-					startInfo->value04));
+				static_cast<void>(configureSegment(payload->directMusic0C->interface04, payload->segment04, startInfo->value00, startInfo->value04));
 			}
 
 			return 1;
@@ -1874,17 +1783,7 @@ static u8 StartSegmentPlayback(
 	}
 
 	const auto playSegmentEx = GetComMethod<PerformancePlaySegmentExFn>(payload->performance08, 0xB4);
-	const HRESULT result = playSegmentEx(
-		payload->performance08,
-		payload->segment04,
-		nullptr,
-		nullptr,
-		flags,
-		0,
-		0,
-		nullptr,
-		nullptr,
-		audiopath->interface1C0);
+	const HRESULT result = playSegmentEx(payload->performance08, payload->segment04, nullptr, nullptr, flags, 0, 0, nullptr, nullptr, audiopath->interface1C0);
 
 	return SUCCEEDED(result) ? 1 : 0;
 }
@@ -1897,13 +1796,7 @@ static u8 __stdcall Method10001E30(Gedx8DriverInstance* instance, Gedx8Audiopath
 	if (object == nullptr || object->kind != 0)
 		return 0;
 
-	return StartSegmentPlayback(
-		static_cast<Gedx8SegmentPayload*>(object->payload),
-		audiopath,
-		flags,
-		startInfo,
-		repeatCount,
-		downloadBeforePlay);
+	return StartSegmentPlayback(static_cast<Gedx8SegmentPayload*>(object->payload), audiopath, flags, startInfo, repeatCount, downloadBeforePlay);
 }
 
 
@@ -1970,24 +1863,10 @@ static u8 ResolveSegmentRhythm(Gedx8SegmentPayload* payload)
 
 	// FUN_10004670 ignores this first HRESULT. If the query fails, the
 	// zero-filled chord keeps measure20 at zero and the function fails below.
-	static_cast<void>(getParam(
-		payload->segment04,
-		GUID_ChordParam_1000C318,
-		0xFFFFFFFFu,
-		0x80000000u,
-		payload->length14,
-		nullptr,
-		&finalChord));
+	static_cast<void>(getParam(payload->segment04, GUID_ChordParam_1000C318, 0xFFFFFFFFu, 0x80000000u, payload->length14, nullptr, &finalChord));
 
 	Gedx8TimeSignature timeSignature{};
-	const HRESULT signatureResult = getParam(
-		payload->segment04,
-		GUID_TimeSignature_1000C308,
-		0xFFFFFFFFu,
-		0x80000000u,
-		0,
-		nullptr,
-		&timeSignature);
+	const HRESULT signatureResult = getParam(payload->segment04, GUID_TimeSignature_1000C308, 0xFFFFFFFFu, 0x80000000u, 0, nullptr, &timeSignature);
 
 	if (FAILED(signatureResult) || finalChord.measure20 == 0)
 		return 0;
@@ -2009,14 +1888,7 @@ static u8 ResolveSegmentRhythm(Gedx8SegmentPayload* payload)
 		while (beat < payload->state1A)
 		{
 			const u8 index = static_cast<u8>(payload->state1A * measure + beat);
-			result = rhythmToTime(
-				payload->performance08,
-				measure,
-				beat,
-				0,
-				0,
-				&timeSignature,
-				&payload->resolved10[index]);
+			result = rhythmToTime(payload->performance08, measure, beat, 0, 0, &timeSignature, &payload->resolved10[index]);
 			++beat;
 		}
 
@@ -2051,13 +1923,7 @@ static u8 SetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** str
 		tempo.tempoLow08 = tempoWords[0];
 		tempo.tempoHigh0C = tempoWords[1];
 
-		if (FAILED(setParam(
-			payload->segment04,
-			GUID_TempoParam_1000C2F8,
-			0xFFFFFFFFu,
-			0x80000000u,
-			0,
-			&tempo)))
+		if (FAILED(setParam(payload->segment04, GUID_TempoParam_1000C2F8, 0xFFFFFFFFu, 0x80000000u, 0, &tempo)))
 		{
 			return 0;
 		}
@@ -2077,14 +1943,7 @@ static u8 SetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** str
 		Gedx8ChordKey chord{};
 		const auto getParam = GetComMethod<SegmentGetParamFn>(payload->segment04, 0x48);
 
-		if (FAILED(getParam(
-			payload->segment04,
-			GUID_ChordParam_1000C318,
-			0xFFFFFFFFu,
-			0x80000000u,
-			time,
-			nullptr,
-			&chord)))
+		if (FAILED(getParam(payload->segment04, GUID_ChordParam_1000C318, 0xFFFFFFFFu, 0x80000000u, time, nullptr, &chord)))
 		{
 			return 0;
 		}
@@ -2092,13 +1951,7 @@ static u8 SetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** str
 		for (u8 subChord = 0; subChord < chord.subChordCount23; ++subChord)
 			chord.subChords24[subChord].chordRoot10 = control->chordRoot03;
 
-		if (FAILED(setParam(
-			payload->segment04,
-			GUID_ChordParam_1000C318,
-			0xFFFFFFFFu,
-			0x80000000u,
-			time,
-			&chord)))
+		if (FAILED(setParam(payload->segment04, GUID_ChordParam_1000C318, 0xFFFFFFFFu, 0x80000000u, time, &chord)))
 		{
 			return 0;
 		}
@@ -2134,14 +1987,7 @@ static u8 GetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** str
 		if (FAILED(getTime(payload->performance08, nullptr, &currentTime)))
 			return 0;
 
-		const HRESULT result = getParam(
-			payload->segment04,
-			GUID_TempoParam_1000C2F8,
-			0xFFFFFFFFu,
-			0x80000000u,
-			0,
-			nullptr,
-			&tempo);
+		const HRESULT result = getParam(payload->segment04, GUID_TempoParam_1000C2F8, 0xFFFFFFFFu, 0x80000000u, 0, nullptr, &tempo);
 
 		auto* const tempoWords = static_cast<u32*>(structure);
 		tempoWords[0] = tempo.tempoLow08;
@@ -2163,14 +2009,7 @@ static u8 GetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** str
 		if (FAILED(getTime(payload->performance08, nullptr, &currentTime)))
 			return 0;
 
-		if (FAILED(getParam(
-			payload->segment04,
-			GUID_ChordParam_1000C318,
-			0xFFFFFFFFu,
-			0x80000000u,
-			currentTime,
-			nullptr,
-			&chord)))
+		if (FAILED(getParam(payload->segment04, GUID_ChordParam_1000C318, 0xFFFFFFFFu, 0x80000000u, currentTime, nullptr, &chord)))
 		{
 			return 0;
 		}
@@ -2181,23 +2020,14 @@ static u8 GetSegmentComposite(Gedx8SegmentPayload* payload, s32 mode, void** str
 		return 1;
 	}
 
-	if (control->measure01 > payload->state18 ||
-		control->beat02 > payload->state1A ||
-		payload->resolved1B == 0)
+	if (control->measure01 > payload->state18 || control->beat02 > payload->state1A || payload->resolved1B == 0)
 	{
 		return 0;
 	}
 
 	const u8 index = static_cast<u8>(payload->state1A * control->measure01 + control->beat02);
 
-	if (FAILED(getParam(
-		payload->segment04,
-		GUID_ChordParam_1000C318,
-		0xFFFFFFFFu,
-		0x80000000u,
-		payload->resolved10[index],
-		nullptr,
-		&chord)))
+	if (FAILED(getParam(payload->segment04, GUID_ChordParam_1000C318, 0xFFFFFFFFu, 0x80000000u, payload->resolved10[index], nullptr, &chord)))
 	{
 		return 0;
 	}

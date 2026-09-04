@@ -3,27 +3,23 @@
 #include "gedx8_interface.h"
 
 
-BOOL APIENTRY DllMain(
-    HMODULE hModule,
-    DWORD reason,
-    LPVOID reserved)
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID reserved)
 {
-    switch (reason)
-    {
-    case DLL_PROCESS_ATTACH:
-    {
-        DisableThreadLibraryCalls(hModule);
+	switch (reason)
+	{
+	case DLL_PROCESS_ATTACH:
+	{
+		DisableThreadLibraryCalls(hModule);
+		InitializeGedx8Interface();
 
-        InitializeGedx8Interface();
+		break;
+	}
 
-        break;
-    }
+	case DLL_PROCESS_DETACH:
+	{
+		break;
+	}
+	}
 
-    case DLL_PROCESS_DETACH:
-    {
-        break;
-    }
-    }
-
-    return TRUE;
+	return TRUE;
 }

@@ -194,6 +194,5 @@ void InitializeGedx8Interface();
 // DLL export
 // -----------------------------------------------------------------------------
 
-extern "C"
-__declspec(dllexport)
+extern "C" __declspec(dllexport)
 u32 __cdecl GetInterface2(Gedx8RawInterface** outInterface);
